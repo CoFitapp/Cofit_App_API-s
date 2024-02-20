@@ -1,0 +1,73 @@
+<%if (typeof data != 'undefined' && data?.demo_events){ %>
+<!DOCTYPE html> 
+<html lang="en"> 
+<head> 
+  <meta http-equiv="Content-Type" content="text/html" charset="UTF-8">
+  <meta name="google-site-verification" content="nHhEXMAHR60uWI2Z0ERneAGMG1CYyqkRT0Cp1Uo_4cM" />
+  <meta name="title" content="<%= data?.demo_events?.title %>">
+  <meta name="description" content="<%= data?.demo_events?.description %>">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title><%= data?.demo_events?.title %></title> 
+	<style type="text/css" media="screen"></style>
+    <!-- ld-json for google search event  -->
+    <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Event",
+          "name": "<%= data?.demo_events?.title %>",
+          "startDate": "2023-11-24T10:00-05:00",
+          "endDate": "2023-11-24T11:00-05:00",
+          "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+          "eventStatus": "https://schema.org/EventScheduled",
+          "location": {
+            "@type": "Place",
+            "name": "<%= data?.demo_events?.address[0] %>",
+            "address": {
+              "@type": "PostalAddress",
+              "name": "<%= data?.demo_events?.address[0] %>, <%= data?.demo_events?.address[1] %>"
+            }
+          },
+          "image": [
+            "<%= data?.demo_events?.image %>"
+           ],
+          "description": "<%= data?.demo_events?.description %>",
+          "performer": {
+            "@type": "PerformingGroup",
+            "name": "Leslie and Group"
+          },
+          "organizer": {
+            "@type": "Organization",
+            "name": "Leslie",
+            "url": "<%= data?.link %>"
+          }
+        }
+        </script>
+            <!-- end ld-json for google search event  --> 
+</head> 
+
+<body> 
+    <!-- Navigation -->
+    <nav class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+        <div class="container">
+            <!-- Brand and toggle get grouped for better mobile display -->
+            <div class="navbar-header">                    
+                <a class="navbar-brand" href="/">Event Listing</a>
+            </div>
+            <!-- Collect the nav links, forms, and other content for toggling -->
+        </div>    
+        <!-- /.container -->
+    </nav>
+    <center>
+    <h1><%= data?.demo_events?.title %></h1>
+    <img src="<%= data?.demo_events?.image %>" />
+    <p><%= data?.demo_events?.description.substring(0, 100) %></p>
+    <p><%= data?.demo_events?.date?.start_date %></p>         
+    <p><%= data?.demo_events?.venue?.name %></p>         
+    </center> 
+</body> 
+</html>
+<% }else{ %>
+    <center>
+        <h2>No result found</h2>
+    </center>    
+<% } %>

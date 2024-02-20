@@ -1,0 +1,23 @@
+const path = require('path');
+
+// 
+// npx sequelize db:migrate
+// npx sequelize db:migrate:undo
+// npx sequelize db:migrate:undo:all
+
+/*** Migrate Single file ***/
+// npx sequelize db:migrate -- name create-carts.js
+// npx sequelize db:migrate:undo --name create-carts.js
+
+
+// npx sequelize db:seed:all
+// npx sequelize db:seed:undo:all
+
+// npx sequelize-cli migration:create --name modify_users_add_new_fields
+
+module.exports = {
+  "config": path.resolve(`${__dirname}/server/src/db-migration/dbconfig.js`),
+  "models-path": path.resolve(`${__dirname}/server/src/models/`),
+  "seeders-path": path.resolve(`${__dirname}/server/src/db-migration/seeders`),
+  "migrations-path": path.resolve(`${__dirname}/server/src/db-migration/migrations`)
+};

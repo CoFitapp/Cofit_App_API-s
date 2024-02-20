@@ -1,0 +1,38 @@
+<!DOCTYPE html> 
+<html> 
+<head> 
+	<title>Home Page</title> 
+
+	<style type="text/css" media="screen">
+	</style> 
+</head> 
+
+<body> 
+	<center> 
+        <table>
+			<thead>
+			  <tr>
+				<th scope="col">Sr no.</th>
+				<th scope="col">Link</th>
+				<th scope="col">Event Name</th>
+			  </tr>
+			</thead>
+	  
+			<tbody id="Table-data">
+			  <%if (typeof data != 'undefined'){ %>
+				<% data.forEach(function(row){ %>
+			  <tr>
+				<td> <%= row.id %> </td>
+				<td> <%= row.link %> </td>
+				<td><a href="event-description/<%= row.id %>/<%= row.demo_events.title.replace(/ /g, '-') %>"> <%= row.demo_events.title %></a></td>	  
+			  </tr>
+			  <% })} else{ %>
+				<tr>
+					<td colspan="3">No Record Found</td>					
+				  </tr>
+				<% } %>
+			</tbody>
+		  </table>
+    </center> 
+</body> 
+</html>
