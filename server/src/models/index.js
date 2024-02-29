@@ -13,6 +13,7 @@ const EventCategory = require("./EventCategory");
 const BookEvents = require("./BookEvents");
 const EventTickets = require("./EventTickets");
 const Payment = require("./Payment");
+const Transactions = require("./Transactions");
 
 module.exports = {
     Event,
@@ -27,5 +28,7 @@ module.exports = {
     EventCategory,
     BookEvents,
     EventTickets,
-    Payment
+    Payment,
+    Transactions
 };
+

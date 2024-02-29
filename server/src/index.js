@@ -61,6 +61,8 @@ router.get("/api/get-feature-event",ApiController.getFeaturedEvents);
 // for custom controller routes
 router.get("/api/event-listing/:id", customController.eventListing);
 router.post("/api/add-event", customController.insertEvent);
+router.post("/api/add-events", customController.insertEvents);
+
 router.post("/api/edit-event", customController.updateEvent);
 router.post("/api/add-event-image/:id", uploadStorage.single("event_image"), customController.insertImage);
 router.get("/api/delete-event/:id", customController.deleteEvent);
@@ -69,11 +71,19 @@ router.get("/api/fetch-booked-event", customController.fetchAllBookedEvents);
 router.get("/api/fetch-event-ticket-availability", customController.fetchAvailableEvents);
 router.get('/api/event/:eventId/attendees', customController.fetchAttendeesByEventId);
 router.post('/api/create-payment-intent', customController.createPaymentIntent);
-router.post('/api/payment_intents/:id/confirm', customController.confirmPaymentIntent);
-router.get('/api/payment_intents', customController.listPaymentIntents);
-router.post('/api/payment_methods', customController.PaymentMethods);
-router.post('/api/update-stripe-card-info', customController.updateCardInfo);
+router.post('/api/payment-intents/:id/confirm', customController.confirmPaymentIntent);
+router.get('/api/payment-intents', customController.listPaymentIntents);
+router.post('/api/payment-methods', customController.PaymentMethods);
+router.post('/api/update-stripe-card-info', customController.updateCustomer);
 router.get('/api/get-customers', customController.getCustomers);
+router.post('/api/payout-methods', customController.addCustomerBankAccount);
+router.post('/api/create-stripe-customer', customController.createStripeCustomer);
+router.post('/api/add-card', customController.addCard);
+router.get('/api/customers/:cardId', customController.getSingleStripeCustomer);
+router.get('/api/get-all-cards/:customerId', customController.getAllCards);
+router.get('/api/get-transactions', customController.getAllTransactions);
+router.post('/api/attach-customer-payment', customController.attachPaymentMethodToCustomer);
+router.post('/api/detach-customer-payment', customController.detachPaymentMethodFromCustomer);
 
 
 // for ejs template routes

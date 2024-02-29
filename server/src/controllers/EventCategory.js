@@ -23,43 +23,80 @@ const {
 
 
 
+// module.exports.createEventCategory = async (req, res, next) => {
+//     try {
+//         // return console.log(req.body)
+//         const { category} = req.body
+//         if (!category) {
+//             return res.status(200).send({
+//                 status: false,
+//                 error: "All fields are mendatory"
+//             })
+//         }
+//         const existingRecord = await EventCategory.findOne({
+//             where:{category}
+//         })
+
+//         if (existingRecord) {
+//             return res.send({
+//                 status: false,
+//                 error: "Category already exists!"
+//             });
+//         }
+        
+//         const event_category = await EventCategory.create({
+//             category
+//         })
+//         return res.status(200).send({
+//             status: true,
+//             message: "Category added successfully",
+//             data: event_category
+//         })
+//     } catch (error) {
+//         console.log("error", error);
+//         return res.status(200).send({
+//             status: false,
+//             error
+//         })
+//     }
+// }
+
+
 module.exports.createEventCategory = async (req, res, next) => {
     try {
-        // return console.log(req.body)
-        const { category} = req.body
-        if (!category) {
-            return res.status(200).send({
+        const { categories } = req.body;
+        if (!categories || !Array.isArray(categories) || categories.length === 0) {
+            return res.status(400).send({
                 status: false,
-                error: "All fields are mendatory"
-            })
-        }
-        const existingRecord = await EventCategory.findOne({
-            where:{category}
-        })
-
-        if (existingRecord) {
-            return res.send({
-                status: false,
-                error: "Category already exists!"
+                error: "Categories array is missing or empty"
             });
         }
         
-        const event_category = await EventCategory.create({
-            category
-        })
+        const createdCategories = await Promise.all(categories.map(async category => {
+            const existingRecord = await EventCategory.findOne({ where: { category } });
+            if (existingRecord) {
+                return { category, error: "Category already exists!" };
+            } else {
+                return EventCategory.create({ category });
+            }
+        }));
+
         return res.status(200).send({
             status: true,
-            message: "Category added successfully",
-            data: event_category
-        })
+            message: "Categories added successfully",
+            data: createdCategories.filter(item => !item.error) // Filtering out errors
+        });
     } catch (error) {
         console.log("error", error);
-        return res.status(200).send({
+        return res.status(500).send({
             status: false,
-            error
-        })
+            error: "Internal server error"
+        });
     }
-}
+};
+
+
+
 
 module.exports.updateEventCategory = async (req, res, next) => {
     try {
