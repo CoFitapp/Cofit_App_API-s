@@ -71,7 +71,7 @@ router.get("/api/fetch-booked-event", customController.fetchAllBookedEvents);
 router.get("/api/fetch-event-ticket-availability", customController.fetchAvailableEvents);
 router.get('/api/event/:eventId/attendees', customController.fetchAttendeesByEventId);
 router.post('/api/create-payment-intent', customController.createPaymentIntent);
-router.post('/api/payment-intents/:id/confirm', customController.confirmPaymentIntent);
+router.post('/api/payment-intents/confirm', customController.confirmPaymentIntent);
 router.get('/api/payment-intents', customController.listPaymentIntents);
 router.post('/api/payment-methods', customController.PaymentMethods);
 router.post('/api/update-stripe-card-info', customController.updateCustomer);

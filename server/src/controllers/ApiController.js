@@ -7,6 +7,7 @@ const {
 const sequelize = require("sequelize");
 const axios = require('axios');
 const { CLIENT_RENEG_LIMIT } = require("tls");
+const stripe = require('stripe')('sk_test_51MpRqnSAkAIYDuQTc5Qk9pZAGwuBW9EY2SFUzavSQKOgXf1SuABpMBrHxvYyJLvefxyBrLzm9JGoKHvFFFlfBIWM0051nUk2NU');
 
 
 
@@ -472,6 +473,75 @@ module.exports.eventDetails = async (req, res) => {
 //   }
 // }
 
+// module.exports.register1 = async (req, res) => {
+//   try {
+//     let full_name = req.body.name;
+//     let first_name = req.body.first_name;
+//     let last_name = req.body.last_name;
+//     let email = req.body.email;
+//     let location = req.body.location;
+//     let google_id = req.body.google_id;
+
+//     let userFind = await User.findOne({
+//       where: {
+//         email,
+//         google_id
+//       }
+//     });
+
+//     if (!userFind) {
+//       userFind = await User.create({
+//         full_name,
+//         location,
+//         email,
+//         google_id,
+//         first_name,
+//         last_name
+//       });
+//     } else {
+//       userFind = await User.update(
+//         {
+//           full_name,
+//           location,
+//         },
+//         {
+//           where: {
+//             email
+//           }
+//         }
+//       );
+
+//       userFind = await User.findOne({
+//         where: {
+//           email
+//         }
+//       });
+//     }
+
+//     let user = {
+//       id: userFind?.id,
+//       name: userFind?.full_name,
+//       location: userFind?.location,
+//       email: userFind?.email,
+//       phone_no: userFind?.phone_no,
+//       profile_image: `${userFind?.profile_image ? `${process.env.IMAGE_BASEURL}/${userFind?.profile_image}` : null}`,
+//       first_name: userFind?.first_name,
+//       last_name: userFind?.last_name
+//     };
+
+//     return res.status(200).send({
+//       status: true,
+//       user
+//     });
+//   } catch (error) {
+//     return res.status(200).send({
+//       status: false,
+//       error
+//     });
+//   }
+// };
+
+
 module.exports.register = async (req, res) => {
   try {
     let full_name = req.body.name;
@@ -481,27 +551,36 @@ module.exports.register = async (req, res) => {
     let location = req.body.location;
     let google_id = req.body.google_id;
 
-    let userFind = await User.findOne({
+    // Check if the email already exists in the database
+    const userFind = await User.findOne({
       where: {
         email,
         google_id
       }
     });
 
-    if (!userFind) {
-      userFind = await User.create({
-        full_name,
-        location,
-        email,
-        google_id,
-        first_name,
-        last_name
+    // Find Stripe customer by email
+    let stripeCustomer;
+    if (email) {
+      const stripeCustomers = await stripe.customers.list({ email });
+      if (stripeCustomers.data.length > 0) {
+        stripeCustomer = stripeCustomers.data[0];
+      }
+    }
+
+    if (!stripeCustomer) {
+      // If Stripe customer doesn't exist, create a new one
+      stripeCustomer = await stripe.customers.create({
+        email: email,
+        name: full_name,
       });
-    } else {
-      userFind = await User.update(
+    }
+
+    // Attach Stripe customer ID to the user
+    if (userFind) {
+      await User.update(
         {
-          full_name,
-          location,
+          stripeCustomerId: stripeCustomer.id
         },
         {
           where: {
@@ -509,28 +588,57 @@ module.exports.register = async (req, res) => {
           }
         }
       );
-
-      userFind = await User.findOne({
-        where: {
-          email
-        }
+    } else {
+      // If user doesn't exist, create a new user with Stripe customer ID
+      await User.create({
+        full_name,
+        location,
+        email,
+        google_id,
+        first_name,
+        last_name,
+        stripeCustomerId: stripeCustomer.id
       });
     }
 
-    let user = {
-      id: userFind?.id,
-      name: userFind?.full_name,
-      location: userFind?.location,
-      email: userFind?.email,
-      phone_no: userFind?.phone_no,
-      profile_image: `${userFind?.profile_image ? `${process.env.IMAGE_BASEURL}/${userFind?.profile_image}` : null}`,
-      first_name: userFind?.first_name,
-      last_name: userFind?.last_name
-    };
+    if (userFind) {
+      // Update User in Database
+      await User.update(
+        {
+          full_name,
+          location,
+          google_id,
+          first_name,
+          last_name,
+        },
+        {
+          where: {
+            email
+          }
+        }
+      );
+    }
+
+    // Retrieve user from database
+    const user = await User.findOne({
+      where: {
+        email
+      }
+    });
 
     return res.status(200).send({
       status: true,
-      user
+      user: {
+        id: user?.id,
+        name: user?.full_name,
+        location: user?.location,
+        email: user?.email,
+        phone_no: user?.phone_no,
+        profile_image: user?.profile_image ? `${process.env.IMAGE_BASEURL}/${user?.profile_image}` : null,
+        first_name: user?.first_name,
+        last_name: user?.last_name,
+        stripeCustomerId: user ? user.stripeCustomerId : stripeCustomer.id // Return Stripe customer ID
+      }
     });
   } catch (error) {
     return res.status(200).send({
@@ -539,6 +647,7 @@ module.exports.register = async (req, res) => {
     });
   }
 };
+
 
 module.exports.deleteAccount = async (req, res) => {
   try {
@@ -582,6 +691,7 @@ module.exports.getUserDetails = async (req, res) => {
       email: userFind?.email,
       phone_no: userFind?.phone_no,
       profile_image: `${userFind?.profile_image ? `${process.env.IMAGE_BASEURL}/${userFind?.profile_image}` : null}`,
+      stripeCustomerId: userFind?.stripeCustomerId,
     }
     return res.status(200).send({
       status: true,

@@ -366,21 +366,28 @@ module.exports.createPaymentIntent = async (req, res) => {
 
 module.exports.confirmPaymentIntent = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { payment_method } = req.body;
-    // Confirm the payment intent by its unique identifier and provide the payment method
-    const paymentIntent = await stripe.paymentIntents.confirm(id, {
-      payment_method,
+    console.log("Request Body:", req.body); // Log the request body to see what's being sent
+    const { payment_Intent_id, payment_method_id } = req.body; // Extract id and method from the request body
+    
+    // Check if payment_Intent_id is present
+    if (!payment_Intent_id) {
+      throw new Error('Payment Intent ID is missing in the request.');
+    }
+    
+    // Confirm the payment intent by its unique identifier from the request body
+    const payment_Intent = await stripe.paymentIntents.confirm(payment_Intent_id, {
+      payment_method: payment_method_id, // Ensure to use correct parameter name here
       return_url: 'https://yourwebsite.com/payment-success'
     });
 
     // Return the confirmed payment intent along with the custom status
-    return res.status(200).json({ status: true, paymentIntent });
+    return res.status(200).json({ status: true, payment_Intent });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ status: false, message: error.message || 'Server error' });
   }
 };
+
 
 
 

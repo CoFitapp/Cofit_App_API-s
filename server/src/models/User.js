@@ -36,6 +36,9 @@ const User = sequelize.define(
         location: {
             type: Sq.STRING,
         },
+        stripeCustomerId: {
+            type: Sq.STRING,
+        }
     },
     {
         timestamps: true,
