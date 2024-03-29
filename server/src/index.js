@@ -68,7 +68,7 @@ router.post("/api/add-event-image/:id", uploadStorage.single("event_image"), cus
 router.get("/api/delete-event/:id", customController.deleteEvent);
 router.post("/api/book-event",customController.bookEvent);
 router.get("/api/fetch-booked-event", customController.fetchAllBookedEvents);
-router.get("/api/fetch-event-ticket-availability", customController.fetchAvailableEvents);
+router.post("/api/fetch-event-ticket-availability", customController.fetchAvailableEvents);
 router.get('/api/event/:eventId/attendees', customController.fetchAttendeesByEventId);
 router.post('/api/create-payment-intent', customController.createPaymentIntent);
 router.post('/api/payment-intents/confirm', customController.confirmPaymentIntent);
@@ -84,7 +84,13 @@ router.get('/api/get-all-cards/:customerId', customController.getAllCards);
 router.get('/api/get-transactions', customController.getAllTransactions);
 router.post('/api/attach-customer-payment', customController.attachPaymentMethodToCustomer);
 router.post('/api/detach-customer-payment', customController.detachPaymentMethodFromCustomer);
-
+router.post('/api/create-payment-intents', customController.createPaymentIntents);
+router.post('/api/create-account-link', customController.createAccountLink);
+router.get("/api/booked-event-listing/:userId", customController.BookedEventsListing);
+router.get("/api/manage-event/:eventId", customController.manageEvent);
+router.get("/api/retrieve-account/:accountId", customController.RetriveStripeAccount);
+router.get("/api/get-all-cities", customController.getAllCities);
+router.get("/api/transactions/:userId", customController.getAllTransactionsofcustomer);
 
 // for ejs template routes
 // router.get('/', function (req,res, next)  {

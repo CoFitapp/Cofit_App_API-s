@@ -38,6 +38,9 @@ const User = sequelize.define(
         },
         stripeCustomerId: {
             type: Sq.STRING,
+        },
+        stripeAccountId: {
+            type: Sq.STRING,
         }
     },
     {

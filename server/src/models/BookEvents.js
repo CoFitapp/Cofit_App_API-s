@@ -4,7 +4,7 @@ const Sq = require("sequelize");
 const sequelize = require("../dbconfig");
 const Op = Sq.Op;
 
-const BookEvents = sequelize.define("book_events", { 
+const BookEvents = sequelize.define("book_events", {
     id: {
         allowNull: false,
         autoIncrement: true,
@@ -42,6 +42,20 @@ const BookEvents = sequelize.define("book_events", {
     phoneNumber: {
         type: Sq.STRING,
         allowNull: false
+    },
+    quantity: {
+        type: Sq.INTEGER,
+        allowNull: false,
+    },
+    bookingId: {
+        type: Sq.STRING,
+        allowNull: false
+    },
+    transactionId: {
+        type: Sq.STRING
+    },
+    ticketNumber: {
+        type: Sq.STRING
     },
     createdAt: {
         allowNull: false,

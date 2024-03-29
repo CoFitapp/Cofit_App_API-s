@@ -7,7 +7,8 @@ const {
 const sequelize = require("sequelize");
 const axios = require('axios');
 const { CLIENT_RENEG_LIMIT } = require("tls");
-const stripe = require('stripe')('sk_test_51MpRqnSAkAIYDuQTc5Qk9pZAGwuBW9EY2SFUzavSQKOgXf1SuABpMBrHxvYyJLvefxyBrLzm9JGoKHvFFFlfBIWM0051nUk2NU');
+// const stripe = require('stripe')('sk_test_51MpRqnSAkAIYDuQTc5Qk9pZAGwuBW9EY2SFUzavSQKOgXf1SuABpMBrHxvYyJLvefxyBrLzm9JGoKHvFFFlfBIWM0051nUk2NU');
+const stripe = require('stripe')('sk_test_2goAzwq8eehY90v9GfXklsty');
 
 
 
@@ -544,109 +545,127 @@ module.exports.eventDetails = async (req, res) => {
 
 module.exports.register = async (req, res) => {
   try {
-    let full_name = req.body.name;
-    let first_name = req.body.first_name;
-    let last_name = req.body.last_name;
-    let email = req.body.email;
-    let location = req.body.location;
-    let google_id = req.body.google_id;
+      let { name, first_name, last_name, email, location, google_id } = req.body;
 
-    // Check if the email already exists in the database
-    const userFind = await User.findOne({
-      where: {
-        email,
-        google_id
-      }
-    });
+      let user = await User.findOne({ where: { email, google_id } });
 
-    // Find Stripe customer by email
-    let stripeCustomer;
-    if (email) {
-      const stripeCustomers = await stripe.customers.list({ email });
-      if (stripeCustomers.data.length > 0) {
-        stripeCustomer = stripeCustomers.data[0];
-      }
-    }
+      let stripeCustomer, stripeAccount;
 
-    if (!stripeCustomer) {
-      // If Stripe customer doesn't exist, create a new one
-      stripeCustomer = await stripe.customers.create({
-        email: email,
-        name: full_name,
-      });
-    }
+      if (!user) {
+          // If the user doesn't exist, create a new Stripe customer and account
+          stripeCustomer = await stripe.customers.create({
+              email: email,
+              name: name,
+          });
 
-    // Attach Stripe customer ID to the user
-    if (userFind) {
-      await User.update(
-        {
-          stripeCustomerId: stripeCustomer.id
-        },
-        {
-          where: {
-            email
+          stripeAccount = await stripe.accounts.create({
+              type: 'express',
+              country: 'US',
+              email: email,
+              business_type: 'individual',
+              individual: {
+                  first_name: first_name,
+                  last_name: last_name,
+                  email: email,
+              },
+              capabilities: {
+                card_payments: {
+                  requested: true,
+                },
+                transfers: {
+                  requested: true,
+                },
+              },
+          });
+
+          // Create the user in the database
+          user = await User.create({
+              full_name: name,
+              location,
+              email,
+              google_id,
+              first_name,
+              last_name,
+              stripeCustomerId: stripeCustomer.id,
+              stripeAccountId: stripeAccount.id
+          });
+      } else {
+          // Check if the user already has a Stripe customer
+          if (!user.stripeCustomerId) {
+              stripeCustomer = await stripe.customers.create({
+                  email: email,
+                  name: name,
+              });
+
+              // Update user with new Stripe customer ID
+              await user.update({
+                  full_name: name,
+                  location,
+                  stripeCustomerId: stripeCustomer.id
+              });
           }
-        }
-      );
-    } else {
-      // If user doesn't exist, create a new user with Stripe customer ID
-      await User.create({
-        full_name,
-        location,
-        email,
-        google_id,
-        first_name,
-        last_name,
-        stripeCustomerId: stripeCustomer.id
+          
+          // Create a new Stripe account even if the customer ID exists
+          stripeAccount = await stripe.accounts.create({
+              type: 'express',
+              country: 'US',
+              email: email,
+              business_type: 'individual',
+              individual: {
+                  first_name: first_name,
+                  last_name: last_name,
+                  email: email,
+              },
+              capabilities: {
+                card_payments: {
+                  requested: true,
+                },
+                transfers: {
+                  requested: true,
+                },
+              },
+          });
+
+          // Update user with new Stripe account ID
+          await user.update({
+              full_name: name,
+              location,
+              stripeAccountId: stripeAccount.id
+          });
+      }
+
+      let formattedUser = {
+          id: user.id,
+          name: user.full_name,
+          location: user.location,
+          email: user.email,
+          phone_no: user.phone_no,
+          profile_image: user.profile_image ? `${process.env.IMAGE_BASEURL}/${user.profile_image}` : null,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          stripeCustomerId: stripeCustomer ? stripeCustomer.id : user.stripeCustomerId,
+          stripeAccountId: stripeAccount ? stripeAccount.id : user.stripeAccountId
+      };
+
+      return res.status(200).send({
+          status: true,
+          user: formattedUser
       });
-    }
-
-    if (userFind) {
-      // Update User in Database
-      await User.update(
-        {
-          full_name,
-          location,
-          google_id,
-          first_name,
-          last_name,
-        },
-        {
-          where: {
-            email
-          }
-        }
-      );
-    }
-
-    // Retrieve user from database
-    const user = await User.findOne({
-      where: {
-        email
-      }
-    });
-
-    return res.status(200).send({
-      status: true,
-      user: {
-        id: user?.id,
-        name: user?.full_name,
-        location: user?.location,
-        email: user?.email,
-        phone_no: user?.phone_no,
-        profile_image: user?.profile_image ? `${process.env.IMAGE_BASEURL}/${user?.profile_image}` : null,
-        first_name: user?.first_name,
-        last_name: user?.last_name,
-        stripeCustomerId: user ? user.stripeCustomerId : stripeCustomer.id // Return Stripe customer ID
-      }
-    });
   } catch (error) {
-    return res.status(200).send({
-      status: false,
-      error
-    });
+      console.error('Error registering user:', error);
+      return res.status(500).send({
+          status: false,
+          error: 'Error registering user'
+      });
   }
 };
+
+
+
+
+
+
+
 
 
 module.exports.deleteAccount = async (req, res) => {
