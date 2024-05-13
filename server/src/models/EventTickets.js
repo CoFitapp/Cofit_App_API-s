@@ -52,4 +52,6 @@ const EventTickets = sequelize.define('EventTickets', {
   } 
 });
 
+
+
 module.exports = EventTickets;

@@ -3,6 +3,10 @@ const path = require("path");
 
 const multer = require("multer")
 
+
+
+
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     // if(req.url=='/api/create-article' || req.url=='/api/update-article'){
@@ -40,6 +44,8 @@ const { demoEvent } = require("./models");
 /*** Auth Routers ***/
 router.post("/api/get-event", ApiController.getEvents);
 router.get("/api/event-detail/:id", ApiController.eventDetails);
+router.get("/api/event-details/:slug", ApiController.eventDetail);
+
 router.get("/save-event", ApiController.saveEvents);
 router.get("/save-weekly-event", ApiController.saveWeeklyEvents);
 router.get("/next-month-save-event", ApiController.nextMonthSaveEvents);
@@ -91,6 +97,7 @@ router.get("/api/manage-event/:eventId", customController.manageEvent);
 router.get("/api/retrieve-account/:accountId", customController.RetriveStripeAccount);
 router.get("/api/get-all-cities", customController.getAllCities);
 router.get("/api/transactions/:userId", customController.getAllTransactionsofcustomer);
+router.post("/api/webhook", customController.stripeWebHook);
 
 // for ejs template routes
 // router.get('/', function (req,res, next)  {
@@ -164,5 +171,10 @@ router.get('/api/get-faq',FaqControlller.getfaq);
 
 router.get("/api/get-app-info",AppInfoController.getInfo)
 router.post("/api/update-app-info",AppInfoController.updateAbout)
+
+router.get('/ticket/:ticketNumber', customController.ShareTicket)
+router.post('/api/promo-code', customController.createPromoCode)
+router.get('/api/promo-codes', customController.getPromoCode)
+
 
 module.exports = router;

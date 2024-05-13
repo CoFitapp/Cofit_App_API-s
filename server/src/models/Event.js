@@ -27,6 +27,12 @@ const Event = sequelize.define(
         event_category: {
             type: Sq.INTEGER,
         },
+        stripeAccountId: {
+            type: Sq.STRING,
+        },
+        year: {
+            type: Sq.INTEGER,
+        },
     },
     {
         timestamps: true,

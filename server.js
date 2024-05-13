@@ -10,6 +10,7 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
+
 // for parsing application/json
 app.use(express.json()); 
 
@@ -34,7 +35,10 @@ app.use(express.static(path.join(__dirname,"./build")));
 app.get('*' , async (req,res) => {
   res.sendFile(path.resolve(__dirname,"./build","index.html"));
 })
-
+app.get('/', (req, res) => {
+  // Pass the current URL to the template
+  res.render('index', { currentUrl: req.url });
+});
 app.use(cors());
 // Include Services API File
 

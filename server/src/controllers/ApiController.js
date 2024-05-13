@@ -9,11 +9,13 @@ const axios = require('axios');
 const { CLIENT_RENEG_LIMIT } = require("tls");
 // const stripe = require('stripe')('sk_test_51MpRqnSAkAIYDuQTc5Qk9pZAGwuBW9EY2SFUzavSQKOgXf1SuABpMBrHxvYyJLvefxyBrLzm9JGoKHvFFFlfBIWM0051nUk2NU');
 const stripe = require('stripe')('sk_test_2goAzwq8eehY90v9GfXklsty');
+const { Op } = require('sequelize');
+const cron = require('node-cron');
 
 
 
 // module.exports.getEvents = async (req, res) => {
-//   try {
+//   try {register
 //     let city_name = req.body.city_name;
 //     console.log("page", req.body.page);
 //     let page = parseInt(req.body.page) || 1;
@@ -146,6 +148,74 @@ const stripe = require('stripe')('sk_test_2goAzwq8eehY90v9GfXklsty');
 // };
 
 
+// Define your cron job
+
+
+// Import necessary modules and define constants like Op
+
+// Define your models (e.g., Event)
+
+// Function to extract month and day from start_date
+
+
+
+
+
+// Cron job to update events' year based on their start_date, month, and day
+// cron.schedule('* * * * *', async () => {
+//   console.log("Cron job running...");
+//   try {
+//     const eventsToUpdate = await Event.findAll();
+    
+//     // Update slugs for all events
+//     for (const event of eventsToUpdate) {
+//       let count = 1;
+//       // Check if events object exists and has a title, and if slug is not defined
+//       if (event.events && event.events.title && !event.events.slug) {
+//         let slug = event.events.title
+//           .toLowerCase()
+//           .replace(/[^a-z0-9]/g, '-')
+//           .replace(/-{2,}/g, '-')
+//           .replace(/^-|-$/g, '');
+
+//         // Check if the generated slug already exists in the database
+//         let existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+
+//         // If the slug already exists, append count + 1
+//         while (existingEvent) {
+//           slug = `${slug}-${count}`;
+//           existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+//           count++;
+//         }
+//         // Update the slug in the events object
+//         event.events.slug = slug;
+
+//         // Save the updated events object back to the database
+//         await Event.update({ events: event.events }, { where: { id: event.id } });
+//       }
+//     }
+
+//     console.log('Slugs added/updated for all events.');
+
+//   } catch (error) {
+//     console.error('Error updating events\' slug:', error.message);
+//   }
+// });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 module.exports.getEvents = async (req, res) => {
   try {
@@ -174,16 +244,18 @@ module.exports.getEvents = async (req, res) => {
         if (events && events.length > 0) {
           const combinedArray = events.map(event => {
             event.events.id = event?.id;
+            event.events.year = event?.year;
             if (event.eventTickets && event.eventTickets.length > 0) {
               event.events.eventTicketsNumber = event.eventTickets.map(ticket => ticket.number);
             } else {
               event.events.eventTicketsNumber = "100";
             }
-            console.log(" event.events.eventTicketsNumber",  event.events.eventTicketsNumber);
+            console.log(" event.events.eventTicketsNumber", event.events.eventTicketsNumber);
             return event.events;
           });
 
           const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
+
           res.json(flattenedArray);
         } else {
           res.json([]);
@@ -208,20 +280,35 @@ module.exports.getEvents = async (req, res) => {
                 city_id: city?.id,
               },
             });
+            let count = 1; // Move count initialization outside the loop
 
-            if (!eventDetail) {
-              const slug = result.title
+            // Check if the slug already exists in the events field JSON
+            let existingEvent = await Event.findOne({ "events.slug": { [sequelize.Op.exists]: false } }).exec();
+
+            // If the slug doesn't exist, create a new one
+            if (!eventDetail.events.slug) {
+              let slug = result.title
                 .toLowerCase()
                 .replace(/[^a-z0-9]/g, '-')
                 .replace(/-{2,}/g, '-')
                 .replace(/^-|-$/g, '');
-              result.slug = slug
+
+              // If the slug already exists, append count + 1
+              while (existingEvent) {
+                slug = `${slug}-${count}`;
+                existingEvent = await Event.findOne({ "events.slug": slug }).exec();
+                count++; // Increment count here
+              }
+
+              result.slug = slug;
+              // result.year = result.year || addYearToEvents();
+              result.year || new Date().getFullYear();
               eventDetail = await Event.create({
                 city_id: city?.id,
                 events: result,
                 link: result?.link,
+                year: result.year, // Include the year when creating the event
               });
-              console.log("slug", eventDetail.slug);
             } else {
               eventDetail.events = result;
               await eventDetail.save();
@@ -229,19 +316,22 @@ module.exports.getEvents = async (req, res) => {
 
             eventDetail.events.id = eventDetail?.id;
             combinedArray.push(eventDetail.events);
+
           }
         }
         const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
         loadRestOfEvents(city?.id);
         res.json(flattenedArray);
       }
-    } else {
+    }
+    else {
       const { searchQuery } = req.body;
       // console.log("searchQuery", req.body);
       // console.log("working.......");
 
       const filteredEvents = await Event.findAll({
         where: {
+          isFeatured: 1,
           [sequelize.Op.and]: [
             {
               'user_id': {
@@ -257,17 +347,17 @@ module.exports.getEvents = async (req, res) => {
           ]
         },
         offset: offset,
-        limit: limit
+        limit: 5
       });
 
       console.log("filteredEvents", filteredEvents.length);
       const combinedArray = filteredEvents.map(event => {
         event.events.id = event?.id;
-        
+
         return event.events;
       });
 
-      
+
 
 
       const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
@@ -292,13 +382,42 @@ module.exports.getEvents = async (req, res) => {
 
       const totalPages = Math.ceil(count / limit);
 
+      //   res.json({
+      //     events: flattenedArray,
+      //     currentPage: page,
+      //   //   totalRecords: count,
+      //     totalRecords: 5,
+
+      //   totalPages
+      //   });
+      // }
+
+      const eventDetails = await Event.findAll({
+        where: {
+          id: [54896, 54897, 54898, 54899, 54900]
+        }
+      });
+
+      console.log("Event Details:", eventDetails);
+
+      // Filter the event details based on the specific IDs
+      const filteredEventDetails = eventDetails.filter(event => {
+        // return [48428, 48430, 48431, 48432, 48433].includes(event.id);
+        return [54896, 54897, 54898, 54899, 54900].includes(event.id);
+      });
+
+      console.log("Filtered Event Details:", filteredEventDetails);
+
       res.json({
-        events: flattenedArray,
+        events: filteredEventDetails,
         currentPage: page,
-        totalRecords: count,
+        totalRecords: 5,
+        eventArray: [54896, 54897, 54898, 54899, 54900],
         totalPages
       });
+
     }
+
     // const eventTickets = eventData.eventTickets || []; 
     // for (const ticket of eventTickets) {
     //   const ticketNumber = ticket.number; 
@@ -405,6 +524,19 @@ module.exports.eventDetails = async (req, res) => {
   }
 }
 
+module.exports.eventDetail = async (req, res) => {
+  const slug = req.params.slug;
+  try {
+    const event = await Event.findOne({ where: { 'events.slug': slug } });
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    res.json(event);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 // module.exports.register = async (req, res) => {
 //   try {
 
@@ -543,120 +675,363 @@ module.exports.eventDetails = async (req, res) => {
 // };
 
 
+// module.exports.register = async (req, res) => {
+//   try {
+//       let { name, first_name, last_name, email, location, google_id } = req.body;
+
+//       let user = await User.findOne({ where: { email, google_id } });
+
+//       let stripeCustomer, stripeAccount;
+
+//       if (!user) {
+//           // If the user doesn't exist, create a new Stripe customer and account
+//           stripeCustomer = await stripe.customers.create({
+//               email: email,
+//               name: name,
+//           });
+
+//           stripeAccount = await stripe.accounts.create({
+//               type: 'express',
+//               country: 'US',
+//               email: email,
+//               business_type: 'individual',
+//               individual: {
+//                   first_name: first_name,
+//                   last_name: last_name,
+//                   email: email,
+//               },
+//               capabilities: {
+//                 card_payments: {
+//                   requested: true,
+//                 },
+//                 transfers: {
+//                   requested: true,
+//                 },
+//               },
+//           });
+
+//           // Create the user in the database
+//           user = await User.create({
+//               full_name: name,
+//               location,
+//               email,
+//               google_id,
+//               first_name,
+//               last_name,
+//               stripeCustomerId: stripeCustomer.id,
+//               stripeAccountId: stripeAccount.id
+//           });
+//       } else {
+//           // Check if the user already has a Stripe customer
+//           if (!user.stripeCustomerId) {
+//               stripeCustomer = await stripe.customers.create({
+//                   email: email,
+//                   name: name,
+//               });
+
+//               // Update user with new Stripe customer ID
+//               await user.update({
+//                   full_name: name,
+//                   location,
+//                   stripeCustomerId: stripeCustomer.id
+//               });
+//           }
+
+//           // Create a new Stripe account even if the customer ID exists
+//           stripeAccount = await stripe.accounts.create({
+//               type: 'express',
+//               country: 'US',
+//               email: email,
+//               business_type: 'individual',
+//               individual: {
+//                   first_name: first_name,
+//                   last_name: last_name,
+//                   email: email,
+//               },
+//               capabilities: {
+//                 card_payments: {
+//                   requested: true,
+//                 },
+//                 transfers: {
+//                   requested: true,
+//                 },
+//               },
+//           });
+
+//           // Update user with new Stripe account ID
+//           await user.update({
+//               full_name: name,
+//               location,
+//               stripeAccountId: stripeAccount.id
+//           });
+//       }
+
+//       let formattedUser = {
+//           id: user.id,
+//           name: user.full_name,
+//           location: user.location,
+//           email: user.email,
+//           phone_no: user.phone_no,
+//           profile_image: user.profile_image ? `${process.env.IMAGE_BASEURL}/${user.profile_image}` : null,
+//           first_name: user.first_name,
+//           last_name: user.last_name,
+//           stripeCustomerId: stripeCustomer ? stripeCustomer.id : user.stripeCustomerId,
+//           stripeAccountId: stripeAccount ? stripeAccount.id : user.stripeAccountId
+//       };
+
+//       return res.status(200).send({
+//           status: true,
+//           user: formattedUser
+//       });
+//   } catch (error) {
+//       console.error('Error registering user:', error);
+//       return res.status(500).send({
+//           status: false,
+//           error: 'Error registering user'
+//       });
+//   }
+// };
+
+
+// module.exports.register = async (req, res) => {
+//   try {
+//     let { name, first_name, last_name, email, location, google_id } = req.body;
+
+//     let user = await User.findOne({ where: { email, google_id } });
+
+//     let stripeCustomer, stripeAccount;
+
+//     if (!user) {
+//       // If the user doesn't exist, create a new Stripe customer and account
+//       stripeCustomer = await stripe.customers.create({
+//         email: email,
+//         name: name,
+//       });
+
+//       stripeAccount = await stripe.accounts.create({
+//         type: 'express',
+//         country: 'US',
+//         email: email,
+//         business_type: 'individual',
+//         individual: {
+//           first_name: first_name,
+//           last_name: last_name,
+//           email: email,
+//         },
+//         capabilities: {
+//           card_payments: {
+//             requested: true,
+//           },
+//           transfers: {
+//             requested: true,
+//           },
+//         },
+//       });
+
+//       // Create the user in the database
+//       user = await User.create({
+//         full_name: name,
+//         location,
+//         email,
+//         google_id,
+//         first_name,
+//         last_name,
+//         stripeCustomerId: stripeCustomer.id,
+//         stripeAccountId: stripeAccount.id
+//       });
+//     } else {
+//       // Check if the user already has a Stripe account
+//       if (!user.stripeAccountId) {
+//         stripeAccount = await stripe.accounts.create({
+//           type: 'express',
+//           country: 'US',
+//           email: email,
+//           business_type: 'individual',
+//           individual: {
+//             first_name: first_name,
+//             last_name: last_name,
+//             email: email,
+//           },
+//           capabilities: {
+//             card_payments: {
+//               requested: true,
+//             },
+//             transfers: {
+//               requested: true,
+//             },
+//           },
+//         });
+
+//         // Update user with new Stripe account ID
+//         await user.update({
+//           full_name: name,
+//           location,
+//           stripeAccountId: stripeAccount.id
+//         });
+//       } else {
+//         // Retrieve existing Stripe account details
+//         stripeAccount = await stripe.accounts.retrieve(user.stripeAccountId);
+//       }
+//     }
+
+//     let formattedUser = {
+//       id: user.id,
+//       name: user.full_name,
+//       location: user.location,
+//       email: user.email,
+//       phone_no: user.phone_no,
+//       profile_image: user.profile_image ? `${process.env.IMAGE_BASEURL}/${user.profile_image}` : null,
+//       first_name: user.first_name,
+//       last_name: user.last_name,
+//       stripeCustomerId: stripeCustomer ? stripeCustomer.id : user.stripeCustomerId,
+//       stripeAccountId: stripeAccount ? stripeAccount.id : user.stripeAccountId
+//     };
+
+//     return res.status(200).send({
+//       status: true,
+//       user: formattedUser
+//     });
+//   } catch (error) {
+//     console.error('Error registering user:', error);
+//     return res.status(500).send({
+//       status: false,
+//       error: 'Error registering user'
+//     });
+//   }
+// };
+
+
 module.exports.register = async (req, res) => {
   try {
-      let { name, first_name, last_name, email, location, google_id } = req.body;
+    let { name, first_name, last_name, email, location, google_id, search_location } = req.body;
 
-      let user = await User.findOne({ where: { email, google_id } });
+    let user = await User.findOne({ where: { email, google_id } });
 
-      let stripeCustomer, stripeAccount;
+    let stripeCustomer, stripeAccount;
 
-      if (!user) {
-          // If the user doesn't exist, create a new Stripe customer and account
-          stripeCustomer = await stripe.customers.create({
-              email: email,
-              name: name,
-          });
+    if (!user) {
+      // If the user doesn't exist, create a new Stripe customer and account
+      stripeCustomer = await stripe.customers.create({
+        email: email,
+        name: name,
+      });
 
-          stripeAccount = await stripe.accounts.create({
-              type: 'express',
-              country: 'US',
-              email: email,
-              business_type: 'individual',
-              individual: {
-                  first_name: first_name,
-                  last_name: last_name,
-                  email: email,
-              },
-              capabilities: {
-                card_payments: {
-                  requested: true,
-                },
-                transfers: {
-                  requested: true,
-                },
-              },
-          });
+      stripeAccount = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email: email,
+        business_type: 'individual',
+        individual: {
+          first_name: first_name,
+          last_name: last_name,
+          email: email,
+        },
+        capabilities: {
+          card_payments: {
+            requested: true,
+          },
+          transfers: {
+            requested: true,
+          },
+        },
+      });
 
-          // Create the user in the database
-          user = await User.create({
-              full_name: name,
-              location,
-              email,
-              google_id,
-              first_name,
-              last_name,
-              stripeCustomerId: stripeCustomer.id,
-              stripeAccountId: stripeAccount.id
-          });
+      // Create the user in the database
+      user = await User.create({
+        full_name: name,
+        location,
+        search_location, // Add search_location field here
+        email,
+        google_id,
+        first_name,
+        last_name,
+        stripeCustomerId: stripeCustomer.id,
+        stripeAccountId: stripeAccount.id
+      });
+    } else {
+      // Check if the user already has a Stripe account
+      if (!user.stripeAccountId) {
+        stripeAccount = await stripe.accounts.create({
+          type: 'express',
+          country: 'US',
+          email: email,
+          business_type: 'individual',
+          individual: {
+            first_name: first_name,
+            last_name: last_name,
+            email: email,
+          },
+          capabilities: {
+            card_payments: {
+              requested: true,
+            },
+            transfers: {
+              requested: true,
+            },
+          },
+        });
+
+        // Update user with new Stripe account ID
+        await user.update({
+          full_name: name,
+          location,
+          search_location, // Add search_location field here
+          stripeAccountId: stripeAccount.id
+        });
+        user.save()
       } else {
-          // Check if the user already has a Stripe customer
-          if (!user.stripeCustomerId) {
-              stripeCustomer = await stripe.customers.create({
-                  email: email,
-                  name: name,
-              });
-
-              // Update user with new Stripe customer ID
-              await user.update({
-                  full_name: name,
-                  location,
-                  stripeCustomerId: stripeCustomer.id
-              });
-          }
-          
-          // Create a new Stripe account even if the customer ID exists
-          stripeAccount = await stripe.accounts.create({
-              type: 'express',
-              country: 'US',
-              email: email,
-              business_type: 'individual',
-              individual: {
-                  first_name: first_name,
-                  last_name: last_name,
-                  email: email,
-              },
-              capabilities: {
-                card_payments: {
-                  requested: true,
-                },
-                transfers: {
-                  requested: true,
-                },
-              },
-          });
-
-          // Update user with new Stripe account ID
-          await user.update({
-              full_name: name,
-              location,
-              stripeAccountId: stripeAccount.id
-          });
+        // Retrieve existing Stripe account details
+        stripeAccount = await stripe.accounts.retrieve(user.stripeAccountId);
       }
 
-      let formattedUser = {
-          id: user.id,
-          name: user.full_name,
-          location: user.location,
-          email: user.email,
-          phone_no: user.phone_no,
-          profile_image: user.profile_image ? `${process.env.IMAGE_BASEURL}/${user.profile_image}` : null,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          stripeCustomerId: stripeCustomer ? stripeCustomer.id : user.stripeCustomerId,
-          stripeAccountId: stripeAccount ? stripeAccount.id : user.stripeAccountId
-      };
+      if (!user.stripeCustomerId) {
 
-      return res.status(200).send({
-          status: true,
-          user: formattedUser
-      });
+        console.log(' if (!user.stripeCustomerId)')
+        // create customer if not exists 
+        stripeCustomer = await stripe.customers.create({
+          email: email,
+          name: name,
+        });
+
+        console.log('stripeCustomer', stripeCustomer)
+
+        // Update user with new Stripe account ID
+        await user.update({
+          stripeCustomerId: stripeCustomer.id,
+        });
+
+        user.save()
+
+      }
+      await user.update({ search_location });
+
+    }
+
+    let formattedUser = {
+      id: user.id,
+      name: user.full_name,
+      location: user.location,
+      search_location: user.search_location, // Add search_location field here
+      email: user.email,
+      phone_no: user.phone_no,
+      profile_image: user.profile_image ? `${process.env.IMAGE_BASEURL}/${user.profile_image}` : null,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      stripeCustomerId: stripeCustomer ? stripeCustomer.id : user.stripeCustomerId,
+      stripeAccountId: stripeAccount ? stripeAccount.id : user.stripeAccountId
+    };
+
+    return res.status(200).send({
+      status: true,
+      user: formattedUser,
+      type: "updated code",
+    });
   } catch (error) {
-      console.error('Error registering user:', error);
-      return res.status(500).send({
-          status: false,
-          error: 'Error registering user'
-      });
+    console.error('###Error registering user:', error);
+    return res.status(500).send({
+      status: false,
+      error: 'Error registering user'
+    });
   }
 };
 
@@ -664,28 +1039,24 @@ module.exports.register = async (req, res) => {
 
 
 
-
-
-
-
 module.exports.deleteAccount = async (req, res) => {
   try {
-      const { email, google_id } = req.body;
+    const { email, google_id } = req.body;
 
-      // Check if the user exists
-      let user = await User.findOne({ where: { email, google_id } });
+    // Check if the user exists
+    let user = await User.findOne({ where: { email, google_id } });
 
-      if (!user) {
-          return res.status(404).json({ message: 'User not found' });
-      }
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-      // Delete the user
-      await user.destroy();
+    // Delete the user
+    await user.destroy();
 
-      return res.status(200).json({ message: 'User deleted successfully' });
+    return res.status(200).json({ message: 'User deleted successfully' });
   } catch (error) {
-      console.error(error);
-      return res.status(500).json({ message: 'Server error' });
+    console.error(error);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -699,7 +1070,7 @@ module.exports.getUserDetails = async (req, res) => {
       }
     });
     if (!userFind) {
-      throw 'No user found!'
+      throw 'No user found!';
     }
     let user = {
       id: userFind?.id,
@@ -707,22 +1078,25 @@ module.exports.getUserDetails = async (req, res) => {
       first_name: userFind?.first_name,
       last_name: userFind?.last_name,
       location: userFind?.location,
+      search_location: userFind?.search_location, // Include search_location
       email: userFind?.email,
       phone_no: userFind?.phone_no,
       profile_image: `${userFind?.profile_image ? `${process.env.IMAGE_BASEURL}/${userFind?.profile_image}` : null}`,
       stripeCustomerId: userFind?.stripeCustomerId,
+      stripeAccountId: userFind?.stripeAccountId,
     }
     return res.status(200).send({
       status: true,
       user
-    })
+    });
   } catch (error) {
     return res.status(200).send({
       status: false,
       error
-    })
+    });
   }
 }
+
 
 module.exports.updateUser = async (req, res) => {
   try {
@@ -759,6 +1133,9 @@ module.exports.updateUser = async (req, res) => {
 
 module.exports.saveEvents = async (req, res) => {
   try {
+    // Retrieve current year
+    const currentYear = new Date().getFullYear();
+
     // Retrieve cities from the database
     const cities = await City.findAll();
 
@@ -777,25 +1154,44 @@ module.exports.saveEvents = async (req, res) => {
           }
 
           for (const result of apiResult) {
-
             let eventDetail = await Event.findOne({
               where: {
                 link: result?.link,
                 city_id: id
               }
             });
-
+            const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
             if (!eventDetail) {
-              // Insert events into the events table
+              // Insert events into the events table along with the current year
+              const slug = result.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '-')
+                .replace(/-{2,}/g, '-')
+                .replace(/^-|-$/g, '');
+              result.slug = slug; // Add the generated slug to the events object
               await Event.create({
                 city_id: id,
                 events: result,
-                link: result?.link
+                link: result?.link,
+                year: eventYear  // Add the current year to the event
               });
 
-            }
-            else {
+            } else {
+              // Update existing event's year to the current year
               eventDetail.events = result;
+              const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
+              eventDetail.year = eventYear;  // Update the year
+              
+              // Add or update slug
+              if (!eventDetail.events.slug) {
+                const slug = result.title
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]/g, '-')
+                  .replace(/-{2,}/g, '-')
+                  .replace(/^-|-$/g, '');
+                eventDetail.events.slug = slug; // Add the generated slug to the events object
+              }
+
               await eventDetail.save();
             }
 
@@ -817,10 +1213,12 @@ module.exports.saveEvents = async (req, res) => {
   }
 }
 
+
 module.exports.saveWeeklyEvents = async (req, res) => {
   try {
     // Retrieve cities from the database
     const cities = await City.findAll();
+    const currentYear = new Date().getFullYear();
 
     for (const city of cities) {
       const { id, city: cityName } = city;
@@ -837,7 +1235,6 @@ module.exports.saveWeeklyEvents = async (req, res) => {
           }
 
           for (const result of apiResult) {
-
             let eventDetail = await Event.findOne({
               where: {
                 link: result?.link,
@@ -845,19 +1242,41 @@ module.exports.saveWeeklyEvents = async (req, res) => {
               }
             });
 
+            const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
             if (!eventDetail) {
-              // Insert events into the events table
+              // Generate slug for the event title
+              let slug = result.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '-')
+                .replace(/-{2,}/g, '-')
+                .replace(/^-|-$/g, '');
+
+              // Check for existing slug in the database
+              let existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+
+              // If the slug already exists, append count + 1
+              let count = 1;
+              while (existingEvent) {
+                slug = `${slug}-${count}`;
+                existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+                count++;
+              }
+
+              // Insert events into the events table with the generated slug
               await Event.create({
                 city_id: id,
-                events: result,
-                link: result?.link
+                events: { ...result, slug },
+                link: result?.link,
+                year: eventYear 
               });
 
             } else {
+              // Update existing event details
               eventDetail.events = result;
+              const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
+              eventDetail.year = eventYear; 
               await eventDetail.save();
             }
-
           }
 
         } catch (error) {
@@ -867,12 +1286,12 @@ module.exports.saveWeeklyEvents = async (req, res) => {
     }
     return res.send({
       status: true
-    })
+    });
   } catch (error) {
     console.error('Error syncing database or processing cities:', error);
     return res.send({
       status: false
-    })
+    });
   }
 }
 
@@ -880,6 +1299,7 @@ module.exports.nextMonthSaveEvents = async (req, res) => {
   try {
     // Retrieve cities from the database
     const cities = await City.findAll();
+    const currentYear = new Date().getFullYear();
 
     for (const city of cities) {
       const { id, city: cityName } = city;
@@ -896,29 +1316,59 @@ module.exports.nextMonthSaveEvents = async (req, res) => {
           }
 
           for (const result of apiResult) {
-
             let eventDetail = await Event.findOne({
               where: {
                 link: result?.link,
                 city_id: id
               }
             });
+            const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
 
             if (!eventDetail) {
               // Insert events into the events table
+              let slug = result.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '-')
+                .replace(/-{2,}/g, '-')
+                .replace(/^-|-$/g, '');
+
+              let count = 1;
+              let existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+
+              while (existingEvent) {
+                slug = `${slug}-${count}`;
+                existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+                count++;
+              }
+
               await Event.create({
                 city_id: id,
-                events: result,
-                link: result?.link
+                events: { ...result, slug },
+                link: result?.link,
+                year: eventYear 
               });
             }
             else {
-              eventDetail.events = result;
+              let slug = result.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '-')
+                .replace(/-{2,}/g, '-')
+                .replace(/^-|-$/g, '');
+              
+              let count = 1;
+              let existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+
+              while (existingEvent) {
+                slug = `${slug}-${count}`;
+                existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
+                count++;
+              }
+
+              eventDetail.events = { ...result, slug };
+              eventDetail.year = eventYear;
               await eventDetail.save();
             }
-
           }
-
         } catch (error) {
           console.error('Error making API request or processing response:', error);
         }

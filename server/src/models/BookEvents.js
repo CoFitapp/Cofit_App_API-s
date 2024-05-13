@@ -57,6 +57,10 @@ const BookEvents = sequelize.define("book_events", {
     ticketNumber: {
         type: Sq.STRING
     },
+    paymentStatus: { 
+        type: Sq.STRING, 
+        allowNull: false,
+    },
     createdAt: {
         allowNull: false,
         type: Sq.DATE
@@ -67,4 +71,5 @@ const BookEvents = sequelize.define("book_events", {
     }
 });
 
+  
 module.exports = BookEvents;

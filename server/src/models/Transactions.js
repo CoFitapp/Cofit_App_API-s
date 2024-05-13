@@ -13,24 +13,23 @@ const Transactions = sequelize.define("transactions", {
       },
       stripe_charge_id: {
         type: Sq.STRING,
-        allowNull: false,
-        unique: true
+        allowNull: true
       },
       amount: {
         type: Sq.INTEGER,
-        allowNull: false
+        allowNull: true
       },
       currency: {
         type: Sq.STRING,
-        allowNull: false
+        allowNull: true
       },
       captured: {
         type: Sq.BOOLEAN,
-        allowNull: false
+        allowNull: true
       },
       created: {
         type: Sq.DATE,
-        allowNull: false
+        allowNull: true
       },
       payment_intent: {
         type: Sq.STRING
@@ -40,6 +39,10 @@ const Transactions = sequelize.define("transactions", {
       },
       customer: {
         type: Sq.STRING
+      },
+      created: {
+        type: Sq.DATE, // Add this field to map to createdAt
+        allowNull: false
       },
       description: {
         type: Sq.STRING
@@ -51,10 +54,27 @@ const Transactions = sequelize.define("transactions", {
       receipt_url: {
         type: Sq.STRING
       },
-      createdAt: {
-        allowNull: false,
-        type: Sq.DATE
-      },
+      type: {
+        type: Sq.STRING,
+        validate: {
+            isIn: [['payment', 'transfer']]
+        },
+        allowNull: false
+    },
+    eventId: {
+      type: Sq.INTEGER,
+      allowNull: false
+    },
+    user_id: {
+      type: Sq.INTEGER,
+    },
+    stripeAccountId: {
+      type: Sq.STRING
+    },
+    payoutAmount: {
+      type: Sq.INTEGER,
+    },
+      createdAt:  'created',
       updatedAt: {
         allowNull: false,
         type: Sq.DATE
