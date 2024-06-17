@@ -11,7 +11,7 @@ const {
 	NewUser,
 } = require("../models");
 const sequelize = require("sequelize");
-const stripe = require('stripe')('sk_test_2goAzwq8eehY90v9GfXklsty');
+const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 const nodemailer = require('nodemailer');
 const bwipjs = require('bwip-js');
 const fs = require('fs');
@@ -23,10 +23,8 @@ const formidable = require('formidable');
 const transporter = nodemailer.createTransport({
 	service: 'gmail',
 	auth: {
-		// user: 'developer1@logicalquad.com',
-		// pass: '58cs[0WV9djfjhsx98112'
-		user: 'irshad.codegaragetech@gmail.com',
-		pass: 'sfnxgwtdmoggykzh'
+		user: process.env.SMTP_USER,
+		pass: process.env.SMTP_PASS,
 	}
 });
 

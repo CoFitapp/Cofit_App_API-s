@@ -7,8 +7,7 @@ const {
 const sequelize = require("sequelize");
 const axios = require('axios');
 const { CLIENT_RENEG_LIMIT } = require("tls");
-// const stripe = require('stripe')('sk_test_51MpRqnSAkAIYDuQTc5Qk9pZAGwuBW9EY2SFUzavSQKOgXf1SuABpMBrHxvYyJLvefxyBrLzm9JGoKHvFFFlfBIWM0051nUk2NU');
-const stripe = require('stripe')('sk_test_2goAzwq8eehY90v9GfXklsty');
+const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 const { Op } = require('sequelize');
 const cron = require('node-cron');
 
