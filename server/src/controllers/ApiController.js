@@ -224,6 +224,7 @@ module.exports.getEvents = async (req, res) => {
     let page = parseInt(req.body.page) || 1;
     const limit = 9;
     const offset = (page - 1) * limit;
+    const currentYear = new Date().getFullYear();
 
     if (city_name) {
       const city = await City.findOne({
@@ -237,9 +238,6 @@ module.exports.getEvents = async (req, res) => {
         const events = await Event.findAll({
           where: { city_id: city.id },
         });
-
-        // console.log('offset', offset);
-        // console.log('events', events);
 
         if (events && events.length > 0) {
           const combinedArray = events.map(event => {
@@ -261,7 +259,7 @@ module.exports.getEvents = async (req, res) => {
           res.json([]);
         }
       } else {
-        let city = await City.create({
+        let newCity = await City.create({
           city: city_name,
         });
 
@@ -277,15 +275,14 @@ module.exports.getEvents = async (req, res) => {
             let eventDetail = await Event.findOne({
               where: {
                 link: result?.link,
-                city_id: city?.id,
+                city_id: newCity?.id,
               },
             });
-            let count = 1; // Move count initialization outside the loop
 
-            // Check if the slug already exists in the events field JSON
+            let count = 1;
+
             let existingEvent = await Event.findOne({ "events.slug": { [sequelize.Op.exists]: false } }).exec();
 
-            // If the slug doesn't exist, create a new one
             if (!eventDetail.events.slug) {
               let slug = result.title
                 .toLowerCase()
@@ -293,21 +290,20 @@ module.exports.getEvents = async (req, res) => {
                 .replace(/-{2,}/g, '-')
                 .replace(/^-|-$/g, '');
 
-              // If the slug already exists, append count + 1
               while (existingEvent) {
                 slug = `${slug}-${count}`;
                 existingEvent = await Event.findOne({ "events.slug": slug }).exec();
-                count++; // Increment count here
+                count++;
               }
+              const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
 
               result.slug = slug;
-              // result.year = result.year || addYearToEvents();
-              result.year || new Date().getFullYear();
+              result.year = result.year || new Date().getFullYear();
               eventDetail = await Event.create({
-                city_id: city?.id,
+                city_id: newCity?.id,
                 events: result,
                 link: result?.link,
-                year: result.year, // Include the year when creating the event
+                year: eventYear,
               });
             } else {
               eventDetail.events = result;
@@ -316,18 +312,14 @@ module.exports.getEvents = async (req, res) => {
 
             eventDetail.events.id = eventDetail?.id;
             combinedArray.push(eventDetail.events);
-
           }
         }
         const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
-        loadRestOfEvents(city?.id);
+        loadRestOfEvents(newCity?.id);
         res.json(flattenedArray);
       }
-    }
-    else {
+    } else {
       const { searchQuery } = req.body;
-      // console.log("searchQuery", req.body);
-      // console.log("working.......");
 
       const filteredEvents = await Event.findAll({
         where: {
@@ -347,18 +339,13 @@ module.exports.getEvents = async (req, res) => {
           ]
         },
         offset: offset,
-        limit: 5
+        limit: limit
       });
 
-      console.log("filteredEvents", filteredEvents.length);
       const combinedArray = filteredEvents.map(event => {
         event.events.id = event?.id;
-
         return event.events;
       });
-
-
-
 
       const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
 
@@ -382,67 +369,13 @@ module.exports.getEvents = async (req, res) => {
 
       const totalPages = Math.ceil(count / limit);
 
-      //   res.json({
-      //     events: flattenedArray,
-      //     currentPage: page,
-      //   //   totalRecords: count,
-      //     totalRecords: 5,
-
-      //   totalPages
-      //   });
-      // }
-
-      const eventDetails = await Event.findAll({
-        where: {
-          id: [54896, 54897, 54898, 54899, 54900]
-        }
-      });
-
-      console.log("Event Details:", eventDetails);
-
-      // Filter the event details based on the specific IDs
-      const filteredEventDetails = eventDetails.filter(event => {
-        // return [48428, 48430, 48431, 48432, 48433].includes(event.id);
-        return [54896, 54897, 54898, 54899, 54900].includes(event.id);
-      });
-
-      console.log("Filtered Event Details:", filteredEventDetails);
-
       res.json({
-        events: filteredEventDetails,
+        events: flattenedArray,
         currentPage: page,
-        totalRecords: 5,
-        eventArray: [54896, 54897, 54898, 54899, 54900],
+        totalRecords: count,
         totalPages
       });
-
     }
-
-    // const eventTickets = eventData.eventTickets || []; 
-    // for (const ticket of eventTickets) {
-    //   const ticketNumber = ticket.number; 
-    //   console.log("Ticket Number:", ticketNumber);
-    // }
-
-    // console.log("Event ID:", eventId); 
-    // const eventDetails = await Event.findByPk(eventId);
-    // console.log("Event Details:", eventDetails); 
-
-
-    // let totalTicketsAvailable = 0;
-    // for (const ticket of eventTickets) {
-    //   totalTicketsAvailable += parseInt(ticket.number);
-    // }
-    // console.log("Total tickets available for the event:", totalTicketsAvailable);
-
-    // const countAllBookedTickets = await BookEvents.count({ where: { eventId: eventId } });
-    // console.log("Count of all booked tickets for eventId:", countAllBookedTickets);
-
-    // totalTicketsAvailable -= countAllBookedTickets;
-    // console.log("Total tickets available after deduction:", totalTicketsAvailable);
-
-    // res.json({ totalTicketsAvailable: totalTicketsAvailable });
-
   } catch (error) {
     return res.status(200).send({
       status: false,
@@ -450,6 +383,7 @@ module.exports.getEvents = async (req, res) => {
     });
   }
 };
+
 
 
 

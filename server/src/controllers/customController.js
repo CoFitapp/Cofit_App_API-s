@@ -7,7 +7,8 @@ const {
 	EventTickets,
 	Payment,
 	Transactions,
-	PromoCode
+	PromoCode,
+	NewUser,
 } = require("../models");
 const sequelize = require("sequelize");
 const stripe = require('stripe')('sk_test_2goAzwq8eehY90v9GfXklsty');
@@ -15,6 +16,9 @@ const nodemailer = require('nodemailer');
 const bwipjs = require('bwip-js');
 const fs = require('fs');
 const { Op } = require('sequelize');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const formidable = require('formidable');
 
 const transporter = nodemailer.createTransport({
 	service: 'gmail',
@@ -1185,13 +1189,135 @@ module.exports.getAllTransactionsofcustomer = async (req, res) => {
 };
 
 
+module.exports.signup = async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        // Check if the email already exists
+        const existingUser = await NewUser.findOne({ where: { email } });
+        if (existingUser) {
+            return res.status(400).json({ status: false, message: 'Email already exists' });
+        }
+
+        // Generate a salt to hash the password
+        const salt = await bcrypt.genSalt(10);
+        // Hash the password with the salt
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create a new user with hashed password
+        const newUser = await NewUser.create({ email, password: hashedPassword });
+
+        // Respond with the email, ID, and status
+        res.status(201).json({
+            status: true,
+            id: newUser.id, // Assuming your model has an 'id' attribute
+            email: newUser.email,
+            message: 'User created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating user:', error);
+        res.status(500).json({ status: false, error: 'Failed to create user' });
+    }
+};
+
+module.exports.login = async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        // Check if the user exists with the provided email
+        const user = await NewUser.findOne({ where: { email } });
+        if (!user) {
+            return res.status(404).json({ status: false, message: 'User not found' });
+        }
+
+        // Compare the provided password with the hashed password stored in the database
+        const isPasswordMatch = await bcrypt.compare(password, user.password);
+        if (!isPasswordMatch) {
+            return res.status(401).json({ status: false, message: 'Invalid password' });
+        }
+
+        // Passwords match, so user is authenticated
+        res.status(200).json({
+            status: true,
+            id: user.id,
+            email: user.email,
+            message: 'Login successful'
+        });
+
+    } catch (error) {
+        console.error('Error logging in user:', error);
+        res.status(500).json({ status: false, error: 'Failed to log in' });
+    }
+};
 
 
 
-
-
-
-
+module.exports.addProfile = async (req, res) => {
+	const userId = req.params.id;
+	const form = new formidable.IncomingForm();
+  
+	form.parse(req, async (err, fields, files) => {
+	  if (err) {
+		console.error('Error parsing form data:', err);
+		return res.status(500).json({
+		  status: false,
+		  message: 'Failed to process form data'
+		});
+	  }
+  
+	  try {
+		let user = await NewUser.findByPk(userId);
+  
+		if (!user) {
+		  return res.status(404).json({
+			success: false,
+			message: 'User not found'
+		  });
+		}
+  
+		// Ensure fields are in correct format before updating
+		const updateFields = {
+		  firstName: fields.firstName ? fields.firstName.toString() : '',
+		  lastName: fields.lastName ? fields.lastName.toString() : '',
+		  dob: fields.dob ? new Date(fields.dob) : null,
+		  gender: fields.gender ? fields.gender.toString() : '',
+		  phoneNo: fields.phoneNo ? fields.phoneNo.toString() : '',
+		  interests: fields.interests ? fields.interests.toString().split(',').map(item => item.trim()) : [], // Handle interests as array of strings
+		  homeLocation: fields.homeLocation ? fields.homeLocation.toString() : '',
+		  searchLocation: fields.searchLocation ? fields.searchLocation.toString() : ''
+		};
+  
+		// Update user record
+		await user.update(updateFields);
+  
+		// Return success response
+		res.status(200).json({
+		  status: true,
+		  message: 'Profile updated successfully',
+		  user: {
+			id: user.id,
+			email: user.email,
+			firstName: user.firstName,
+			lastName: user.lastName,
+			dob: user.dob,
+			gender: user.gender,
+			phoneNo: user.phoneNo,
+			profilePhoto: user.profilePhoto,
+			interests: user.interests,
+			homeLocation: user.homeLocation,
+			searchLocation: user.searchLocation
+		  }
+		});
+	  } catch (error) {
+		console.error('Error adding/updating profile:', error);
+		res.status(500).json({
+		  status: false,
+		  message: 'Failed to add/update profile'
+		});
+	  }
+	});
+  };
+  
 
 
 // const endpointSecret = 'whsec_ce4MQk3FuWftxkk5WN244mWIm8CrqrSl';

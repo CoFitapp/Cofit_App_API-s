@@ -98,6 +98,9 @@ router.get("/api/retrieve-account/:accountId", customController.RetriveStripeAcc
 router.get("/api/get-all-cities", customController.getAllCities);
 router.get("/api/transactions/:userId", customController.getAllTransactionsofcustomer);
 router.post("/api/webhook", customController.stripeWebHook);
+router.post("/api/signup", customController.signup);
+router.post("/api/add-profile/:id", customController.addProfile);
+router.post("/api/login", customController.login);
 
 // for ejs template routes
 // router.get('/', function (req,res, next)  {
