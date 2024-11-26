@@ -16,6 +16,7 @@ const Payment = require("./Payment");
 const Transactions = require("./Transactions");
 const PromoCode = require("./PromoCodes");
 const NewUser = require("./newUsers");
+const EventAddress = require("./EventAddress");
 
 module.exports = {
     Event,
@@ -33,6 +34,7 @@ module.exports = {
     Payment,
     Transactions,
     PromoCode,
-    NewUser
+    NewUser,
+    EventAddress
 };
 

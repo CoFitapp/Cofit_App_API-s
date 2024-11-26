@@ -9,6 +9,7 @@ const {
 	Transactions,
 	PromoCode,
 	NewUser,
+	EventAddress,
 } = require("../models");
 const sequelize = require("sequelize");
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
@@ -19,6 +20,15 @@ const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const formidable = require('formidable');
+const multer = require('multer');
+const path = require('path');
+const cron = require('node-cron');
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientIdNew = process.env.GOOGLE_CLIENT_ID1;
+
+const { OAuth2Client } = require('google-auth-library');
+const APPLE_AUTH_KEY_URL = 'https://appleid.apple.com/auth/keys';
+const axios = require('axios');
 
 const transporter = nodemailer.createTransport({
 	service: 'gmail',
@@ -940,6 +950,7 @@ module.exports.getAllCities = async (req, res) => {
 
 
 const _ = require('lodash');
+const { CLIENT_RENEG_LIMIT } = require("tls");
 
 
 // module.exports.getAllTransactionsofcustomer = async (req, res) => {
@@ -1123,62 +1134,62 @@ module.exports.getAllTransactionsofcustomer = async (req, res) => {
 		});
 		const eventIds = bookEvents.map(event => event.eventId);
 
-        // Fetch event details from Event table based on eventIds
-        const eventDetails = await Event.findAll({
-            where: {
-                id: eventIds
-            }
-        });
-        
+		// Fetch event details from Event table based on eventIds
+		const eventDetails = await Event.findAll({
+			where: {
+				id: eventIds
+			}
+		});
+
 		// Fetch event ticket details based on eventIds
 		const eventTicketDetails = await EventTickets.findAll({
-            where: {
-                eventId: eventIds
-            }
-        });
-        
-        // Prepare the response in the desired format
-        const transactionDetails = transactions.map(transaction => {
-        	// Find associated book events for the transaction
-        	const associatedBookEvents = bookEvents.filter(event => event.transactionId === transaction.payment_intent);
-        	
-        	// Find associated event details for the book events
-        	const associatedEventDetails = eventDetails.find(event => event.id === associatedBookEvents[0].eventId);
-        	
-        	// Find associated event ticket details for the event
-        	const associatedEventTicketDetails = eventTicketDetails.filter(ticket => ticket.eventId === associatedEventDetails.id);
-        	
-        	// Construct tickets array
-        	const tickets = associatedBookEvents.map(event => {
-        		const eventTicket = associatedEventTicketDetails.find(ticket => ticket.eventId === event.eventId);
-        		return {
-        			id: event.ticketNumber,
-        			planName: event.planId,
-        			price: eventTicket ? eventTicket.price : null,
-        			quantity: event.quantity
-        		};
-        	});
-        	let amount = transaction.amount;
-        	if (transaction.type === "transfer") {
-        		// Set amount to a default value or null if appropriate
-        		amount = transaction.payoutAmount; // or assign a default value if necessary
-        	}
-        	return {
-        		userId: transaction.user_id,
-        		amount,
-        		type: transaction.type,
-				eventId: associatedEventDetails.id,
-        		eventName: associatedEventDetails.events.title,
-        		eventDate: associatedEventDetails.events.date.when,
-        		eventLocation: associatedEventDetails.events.address[0],
-        		eventImage: associatedEventDetails.events.image,
-        		tickets,
-        		createdAt: transaction.createdAt
-        	};
-        });
+			where: {
+				eventId: eventIds
+			}
+		});
 
-        // Respond with the transformed data
-        res.json({ status: true, transactionCount: transactions.length, transactionDetails });
+		// Prepare the response in the desired format
+		const transactionDetails = transactions.map(transaction => {
+			// Find associated book events for the transaction
+			const associatedBookEvents = bookEvents.filter(event => event.transactionId === transaction.payment_intent);
+
+			// Find associated event details for the book events
+			const associatedEventDetails = eventDetails.find(event => event.id === associatedBookEvents[0].eventId);
+
+			// Find associated event ticket details for the event
+			const associatedEventTicketDetails = eventTicketDetails.filter(ticket => ticket.eventId === associatedEventDetails.id);
+
+			// Construct tickets array
+			const tickets = associatedBookEvents.map(event => {
+				const eventTicket = associatedEventTicketDetails.find(ticket => ticket.eventId === event.eventId);
+				return {
+					id: event.ticketNumber,
+					planName: event.planId,
+					price: eventTicket ? eventTicket.price : null,
+					quantity: event.quantity
+				};
+			});
+			let amount = transaction.amount;
+			if (transaction.type === "transfer") {
+				// Set amount to a default value or null if appropriate
+				amount = transaction.payoutAmount; // or assign a default value if necessary
+			}
+			return {
+				userId: transaction.user_id,
+				amount,
+				type: transaction.type,
+				eventId: associatedEventDetails.id,
+				eventName: associatedEventDetails.events.title,
+				eventDate: associatedEventDetails.events.date.when,
+				eventLocation: associatedEventDetails.events.address[0],
+				eventImage: associatedEventDetails.events.image,
+				tickets,
+				createdAt: transaction.createdAt
+			};
+		});
+
+		// Respond with the transformed data
+		res.json({ status: true, transactionCount: transactions.length, transactionDetails });
 	} catch (error) {
 		// Handle errors
 		console.error('Error fetching transactions and book events:', error);
@@ -1188,134 +1199,825 @@ module.exports.getAllTransactionsofcustomer = async (req, res) => {
 
 
 module.exports.signup = async (req, res) => {
-    const { email, password } = req.body;
+	const { email, password } = req.body;
 
-    try {
-        // Check if the email already exists
-        const existingUser = await NewUser.findOne({ where: { email } });
-        if (existingUser) {
-            return res.status(400).json({ status: false, message: 'Email already exists' });
-        }
-
-        // Generate a salt to hash the password
-        const salt = await bcrypt.genSalt(10);
-        // Hash the password with the salt
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        // Create a new user with hashed password
-        const newUser = await NewUser.create({ email, password: hashedPassword });
-
-        // Respond with the email, ID, and status
-        res.status(201).json({
-            status: true,
-            id: newUser.id, // Assuming your model has an 'id' attribute
-            email: newUser.email,
-            message: 'User created successfully'
-        });
-    } catch (error) {
-        console.error('Error creating user:', error);
-        res.status(500).json({ status: false, error: 'Failed to create user' });
-    }
-};
-
-module.exports.login = async (req, res) => {
-    const { email, password } = req.body;
-
-    try {
-        // Check if the user exists with the provided email
-        const user = await NewUser.findOne({ where: { email } });
-        if (!user) {
-            return res.status(404).json({ status: false, message: 'User not found' });
-        }
-
-        // Compare the provided password with the hashed password stored in the database
-        const isPasswordMatch = await bcrypt.compare(password, user.password);
-        if (!isPasswordMatch) {
-            return res.status(401).json({ status: false, message: 'Invalid password' });
-        }
-
-        // Passwords match, so user is authenticated
-        res.status(200).json({
-            status: true,
-            id: user.id,
-            email: user.email,
-            message: 'Login successful'
-        });
-
-    } catch (error) {
-        console.error('Error logging in user:', error);
-        res.status(500).json({ status: false, error: 'Failed to log in' });
-    }
-};
-
-
-
-module.exports.addProfile = async (req, res) => {
-	const userId = req.params.id;
-	const form = new formidable.IncomingForm();
-  
-	form.parse(req, async (err, fields, files) => {
-	  if (err) {
-		console.error('Error parsing form data:', err);
-		return res.status(500).json({
-		  status: false,
-		  message: 'Failed to process form data'
-		});
-	  }
-  
-	  try {
-		let user = await NewUser.findByPk(userId);
-  
-		if (!user) {
-		  return res.status(404).json({
-			success: false,
-			message: 'User not found'
-		  });
+	try {
+		// Check if the email already exists
+		const existingUser = await NewUser.findOne({ where: { email } });
+		if (existingUser) {
+			return res.status(400).json({ status: false, message: 'Email already exists' });
 		}
-  
-		// Ensure fields are in correct format before updating
-		const updateFields = {
-		  firstName: fields.firstName ? fields.firstName.toString() : '',
-		  lastName: fields.lastName ? fields.lastName.toString() : '',
-		  dob: fields.dob ? new Date(fields.dob) : null,
-		  gender: fields.gender ? fields.gender.toString() : '',
-		  phoneNo: fields.phoneNo ? fields.phoneNo.toString() : '',
-		  interests: fields.interests ? fields.interests.toString().split(',').map(item => item.trim()) : [], // Handle interests as array of strings
-		  homeLocation: fields.homeLocation ? fields.homeLocation.toString() : '',
-		  searchLocation: fields.searchLocation ? fields.searchLocation.toString() : ''
-		};
-  
-		// Update user record
-		await user.update(updateFields);
-  
-		// Return success response
-		res.status(200).json({
-		  status: true,
-		  message: 'Profile updated successfully',
-		  user: {
+
+		// Generate a salt to hash the password
+		const salt = await bcrypt.genSalt(10);
+		// Hash the password with the salt
+		const hashedPassword = await bcrypt.hash(password, salt);
+
+		// Create a new user with hashed password
+		const newUser = await NewUser.create({ email, password: hashedPassword });
+
+		// Respond with the email, ID, and status
+		res.status(201).json({
+			status: true,
+			id: newUser.id, // Assuming your model has an 'id' attribute
+			email: newUser.email,
+			message: 'User created successfully'
+		});
+	} catch (error) {
+		console.error('Error creating user:', error);
+		res.status(500).json({ status: false, error: 'Failed to create user' });
+	}
+};
+
+const client = new OAuth2Client(googleClientId);
+
+// module.exports.socialLogin = async (req, res) => {
+//     const { provider, access_token, email } = req.body;
+
+//     try {
+//         let user;
+
+//         if (provider === 'google') {
+//             // Google Login - Commented out verification for testing in Postman
+//             try {
+//                 const ticket = await client.verifyIdToken({
+//                     idToken: access_token,
+//                     audience: googleClientId,
+//                 });
+//                 const payload = ticket.getPayload();
+//                 const googleId = payload.sub; // Extract Google ID (sub) from token payload
+
+//                 // Check if the user exists
+//                 user = await NewUser.findOne({ where: { email } });
+
+//                 if (!user) {
+//                     // Create a new user if not exists
+//                     user = await NewUser.create({ email, googleuser: googleId });
+//                 } else {
+//                     // Update existing user with Google ID
+//                     user.googleuser = googleId;
+//                     await user.save();
+//                 }
+
+//             } catch (error) {
+//                 console.error('Error with Google login:', error);
+//                 return res.status(500).json({ status: false, message: 'Failed to authenticate with Google' });
+//             }
+
+//         } else if (provider === 'facebook') {
+//             // Facebook Login - Commented out token verification for testing in Postman
+//             try {
+//                 const response = await axios.get(`https://graph.facebook.com/v14.0/me?fields=email&access_token=${access_token}`);
+//                 const facebookUserId = response.data.id;
+
+//                 // Check if the user exists
+//                 user = await NewUser.findOne({ where: { email } });
+
+//                 if (!user) {
+//                     // Create a new user if not exists
+//                     user = await NewUser.create({ email, facebookuser: facebookUserId });
+//                 } else {
+//                     // Update existing user with Facebook ID
+//                     user.facebookuser = facebookUserId;
+//                     await user.save();
+//                 }
+
+//             } catch (error) {
+//                 console.error('Error with Facebook login:', error);
+//                 return res.status(500).json({ status: false, message: 'Failed to authenticate with Facebook' });
+//             }
+
+//         } else if (provider === 'apple') {
+//             // Apple Login - Assuming you have a way to extract Apple user ID from identityToken
+//             try {
+//                 const { identityToken } = req.body;
+//                 const appleUserId = 'extract apple user id from token'; // Replace with your logic to extract Apple user ID
+
+//                 // Check if the user exists
+//                 user = await NewUser.findOne({ where: { email } });
+
+//                 if (!user) {
+//                     // Create a new user if not exists
+//                     user = await NewUser.create({ email, appleuser: appleUserId });
+//                 } else {
+//                     // Update existing user with Apple ID
+//                     user.appleuser = appleUserId;
+//                     await user.save();
+//                 }
+
+//             } catch (error) {
+//                 console.error('Error with Apple login:', error);
+//                 return res.status(500).json({ status: false, message: 'Failed to authenticate with Apple' });
+//             }
+
+//         } else {
+//             return res.status(400).json({ status: false, message: 'Invalid provider or missing credentials' });
+//         }
+
+//         // Respond with user details
+//         res.status(200).json({
+//             status: true,
+//             id: user.id,
+//             email: user.email,
+//             message: 'User logged in successfully',
+//         });
+
+//     } catch (error) {
+//         console.error(`Error with ${provider} login:`, error);
+//         res.status(500).json({ status: false, error: `Failed to authenticate with ${provider}` });
+//     }
+// };
+
+// async function sendWelcomeEmail(email, token) {
+// 	try {
+// 		// Generate URL for password set endpoint
+// 		const setPasswordUrl = `https://your-app.com/set-password?token=${token}`;
+
+// 		// Send email logic
+// 		const mailOptions = {
+// 			from: 'your-email@example.com',
+// 			to: email,
+// 			subject: 'Welcome to Our App! Set Your Password',
+// 			html: `
+//                 <p>Thank you for signing up. Please click <a href="${setPasswordUrl}">here</a> to set your password.</p>
+//                 <p>This link will expire in 1 hour for security reasons.</p>
+//             `,
+// 		};
+
+// 		await transporter.sendMail(mailOptions);
+// 		console.log(`Welcome email sent to ${email}`);
+// 	} catch (error) {
+// 		console.error('Error sending welcome email:', error);
+// 		// Handle error sending email
+// 	}
+// }
+
+// // Replace this with your secure token generation logic
+// function generateSecureToken() {
+// 	return Math.random().toString(36).substr(2, 10); // Example: Generate a random token
+// }
+
+
+// module.exports.updatePassword = async (req, res) => {
+// 	const { id, password } = req.body;
+
+// 	try {
+// 		// Find user by id
+// 		const user = await NewUser.findByPk(id);
+
+// 		if (!user) {
+// 			return res.status(400).json({ status: false, error: 'User not found' });
+// 		}
+
+// 		// Update user's password and profile
+// 		const salt = await bcrypt.genSalt(10);
+// 		const hashedPassword = await bcrypt.hash(password, salt);
+
+// 		user.password = hashedPassword;
+
+// 		await user.save();
+// 		window.location.href = 'UpdatePassword.html'
+// 		// Respond with success message
+// 		res.status(200).json({ status: true, message: 'Password updated successfully' });
+// 	} catch (error) {
+// 		console.error('Error updating password:', error);
+// 		res.status(500).json({ status: false, error: 'Failed to update password' });
+// 	}
+// };
+
+
+
+
+
+// Google Login
+module.exports.googleLogin = async (req, res) => {
+	const { access_token, email, googleId, useNewClientId = true } = req.body;
+
+	try {
+		// Determine which client ID to use
+		const clientIdToUse = useNewClientId ? googleClientIdNew : googleClientId;
+
+		const ticket = await client.verifyIdToken({
+			idToken: access_token,
+			audience: clientIdToUse,
+		});
+		// const payload = ticket.getPayload();
+		// const googleId = payload.sub; // Extract Google ID (sub) from token payload
+
+		let user = await NewUser.findOne({ where: { email } });
+
+		if (!user) {
+			// Create new user if not found
+			user = await NewUser.create({ email, googleuser: googleId, newUser: true });
+		} else {
+			// Update existing user with googleId and set newUser to false
+			user.googleuser = googleId;
+			user.newUser = false; // Existing user, so set newUser to false
+			await user.save();
+		}
+
+		// Fetch user again to ensure all fields are populated
+		user = await NewUser.findOne({ where: { email } });
+
+		const userData = {
 			id: user.id,
 			email: user.email,
-			firstName: user.firstName,
-			lastName: user.lastName,
+			first_name: user.firstName,
+			last_name: user.lastName,
 			dob: user.dob,
 			gender: user.gender,
-			phoneNo: user.phoneNo,
-			profilePhoto: user.profilePhoto,
+			phone_no: user.phoneNo,
+			profile_image: user.profilePhoto,
 			interests: user.interests,
-			homeLocation: user.homeLocation,
-			searchLocation: user.searchLocation
-		  }
+			location: user.homeLocation,
+			search_location: user.searchLocation,
+			googleuser: user.googleuser,
+			facebookuser: user.facebookuser,
+			appleuser: user.appleuser,
+		};
+
+		res.status(200).json({
+			status: true,
+			user: userData,
+			newUser: user.newUser,
+			message: 'User logged in successfully with Google',
 		});
-	  } catch (error) {
-		console.error('Error adding/updating profile:', error);
-		res.status(500).json({
-		  status: false,
-		  message: 'Failed to add/update profile'
+
+	} catch (error) {
+		console.error('Error with Google login:', error);
+		res.status(500).json({ status: false, message: 'Token Expired' });
+	}
+};
+
+
+
+// Facebook Login
+module.exports.facebookLogin = async (req, res) => {
+	const { access_token, email, facebookId } = req.body;
+
+	try {
+		// You need to implement how to verify the Facebook access token
+		// This could involve making a request to Facebook API or using a library
+		// For simplicity, let's assume you have a method to verify the token similar to Google
+
+		// Example of verifying Facebook token (this needs to be implemented)
+		const isValid = await verifyFacebookToken(access_token, facebookClientId);
+
+		// For now, let's assume token is valid
+		// const isValid = true; // Replace this with actual token verification
+
+		if (!isValid) {
+			return res.status(401).json({ status: false, message: 'Invalid Facebook token' });
+		}
+
+		let user = await NewUser.findOne({ email });
+
+		if (!user) {
+			// Create new user if not found
+			user = await NewUser.create({ email, facebookuser: facebookId, newUser: true });
+		} else {
+			// Update existing user with facebookId and set newUser to false
+			user.facebookuser = facebookId;
+			user.newUser = false; // Existing user, so set newUser to false
+			await user.save();
+		}
+
+		// Fetch user again to ensure all fields are populated
+		user = await NewUser.findOne({ email });
+
+		const userData = {
+			id: user.id,
+			email: user.email,
+			first_name: user.firstName,
+			last_name: user.lastName,
+			dob: user.dob,
+			gender: user.gender,
+			phone_no: user.phoneNo,
+			profile_image: user.profilePhoto,
+			interests: user.interests,
+			location: user.homeLocation,
+			search_location: user.searchLocation,
+			googleuser: user.googleuser,
+			facebookuser: user.facebookuser,
+			appleuser: user.appleuser,
+		};
+
+		res.status(200).json({
+			status: true,
+			user: userData,
+			newUser: user.newUser,
+			message: 'User logged in successfully with Facebook',
 		});
-	  }
-	});
-  };
-  
+
+	} catch (error) {
+		console.error('Error with Facebook login:', error);
+		res.status(500).json({ status: false, message: 'Internal Server Error' });
+	}
+};
+
+// Apple Login
+module.exports.appleLogin = async (req, res) => {
+	const { email, appleId } = req.body;
+
+	try {
+		// Check if Apple ID exists in the database
+		let user = await NewUser.findOne({ where: { appleuser: appleId } });
+
+		if (!user) {
+			// Apple ID not found, check if email exists
+			if (email) {
+				user = await NewUser.findOne({ where: { email } });
+				if (user) {
+					// Update existing user with Apple ID
+					user.appleuser = appleId;
+					user.newUser = false; // Existing user, so set newUser to false
+					await user.save();
+				} else {
+					// Create new user with both email and Apple ID
+					user = await NewUser.create({ email, appleuser: appleId, newUser: true });
+				}
+			} else {
+				// No email provided, create new user with only Apple ID
+				user = await NewUser.create({ appleuser: appleId, newUser: true });
+			}
+		} else {
+			// Apple ID found
+			if (!user.email && email) {
+				// If existing user's email is not set and email is provided, update email
+				user.email = email;
+			}
+			// Ensure newUser flag is set to false if user is found
+			user.newUser = false;
+			await user.save();
+		}
+
+		// Fetch user again to ensure all fields are populated
+		user = await NewUser.findOne({ where: { appleuser: appleId } });
+
+		const userData = {
+			id: user.id,
+			email: user.email,
+			first_name: user.firstName,
+			last_name: user.lastName,
+			dob: user.dob,
+			gender: user.gender,
+			phone_no: user.phoneNo,
+			profile_image: user.profilePhoto,
+			interests: user.interests,
+			location: user.homeLocation,
+			search_location: user.searchLocation,
+			googleuser: user.googleuser,
+			facebookuser: user.facebookuser,
+			appleuser: user.appleuser,
+		};
+
+		res.status(200).json({
+			status: true,
+			user: userData,
+			newUser: user.newUser,
+			message: 'User logged in successfully',
+		});
+
+	} catch (error) {
+		console.error('Error with Apple login:', error);
+		res.status(500).json({ status: false, message: 'Failed to log in with Apple' });
+	}
+};
+
+
+module.exports.updatePassword = async (req, res) => {
+	const userId = parseInt(req.params.id);
+	const { newPassword } = req.body;
+
+	try {
+		// Find the user by ID
+		let user = await NewUser.findOne({ where: { id: userId } });
+
+		if (!user) {
+			return res.status(404).json({ status: false, message: 'User not found' });
+		}
+
+		// Hash the new password
+		const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+		// Update user's password in the database
+		user.password = hashedPassword;
+		await user.save(); // Save the updated user
+
+		// Respond with success message
+		res.json({ status: true, message: 'Password updated successfully' });
+	} catch (error) {
+		console.error('Error updating password:', error);
+		res.status(500).json({ status: false, message: 'Failed to update password' });
+	}
+};
+
+
+module.exports.login = async (req, res) => {
+	const { email, password } = req.body;
+
+	try {
+		// Check if the user exists with the provided email
+		let user = await NewUser.findOne({ where: { email } });
+
+		if (!user) {
+			return res.status(404).json({ status: false, message: 'Email or Password is incorrect' });
+		}
+
+		// Compare the provided password with the hashed password stored in the database
+		const isPasswordMatch = await bcrypt.compare(password, user.password);
+		if (!isPasswordMatch) {
+			return res.status(401).json({ status: false, message: 'Invalid password' });
+		}
+
+		// Prepare user data to send in response
+		const userData = {
+			id: user.id,
+			email: user.email,
+			first_name: user.firstName,
+			last_name: user.lastName,
+			dob: user.dob,
+			gender: user.gender,
+			phone_no: user.phoneNo,
+			profile_image: user.profilePhoto,
+			interests: user.interests,
+			location: user.homeLocation,
+			search_location: user.searchLocation,
+			googleuser: user.googleuser,
+			facebookuser: user.facebookuser,
+			appleuser: user.appleuser,
+		};
+
+		// User is authenticated
+		res.status(200).json({
+			status: true,
+			user: userData,
+			message: 'Login successful'
+		});
+	} catch (error) {
+		console.error('Error logging in user:', error);
+		res.status(500).json({ status: false, message: 'Incorrect Password' });
+	}
+};
+
+
+module.exports.SendResetLink = async (req, res) => {
+	const { email } = req.body; // Assuming the request body contains user's email
+
+	try {
+		const user = await NewUser.findOne({ where: { email } });
+
+		if (!user) {
+			return res.status(404).json({ status: false, message: 'User not found' });
+		}
+
+		// Continue with sending reset link logic
+		const resetLink = `https://cofitapp.com/reset-password?id=${encodeURIComponent(user.id)}`;
+		const mailOptions = {
+			from: '"CoFit App" <support@cofitapp.com>',
+			to: user.email,
+			subject: 'Password Reset',
+			// HTML body with a clickable link
+			html: `
+				<p style="color: black; font-weight: 600;">Dear User,</p>
+				<p>We received a request to reset your password for Cofit App. To proceed with resetting your password, please follow the instructions below:</p>
+				<ol>
+					<li>Click the following link to reset your password:</li>
+					<p><a href="${resetLink}" target="_blank" style="color: blue; text-decoration: underline;">Reset Your Password</a></p>
+				</ol>
+				<p><strong>Note:</strong> This link will expire after 24 hours. If you do not reset your password within this time, you may need to request another password reset.</p>
+				<p>If you did not request this password reset, please ignore this email. Your account security is important to us, and no changes have been made to your account at this time.</p>
+				<p>Thank you for using Cofit App. If you have any questions or need further assistance, please don’t hesitate to contact our support team at <a href="mailto:support@cofitapp.com">support@cofitapp.com</a>.</p>
+				<p style="color: black; font-weight: 600;">Best Regards,<br/>Cofit Corp</p>
+			`
+		};
+
+		// Send the email
+		transporter.sendMail(mailOptions, (error, info) => {
+			if (error) {
+				console.error('Error sending email:', error);
+				return res.status(500).json({ status: false, message: 'Error sending email' });
+			}
+			console.log('Email sent:', info.response);
+			res.status(200).json({ status: true, message: 'Reset instructions sent successfully' });
+		});
+
+	} catch (error) {
+		console.error('Error finding user:', error);
+		res.status(500).json({ status: false, message: 'Error finding user' });
+	}
+};
+
+
+module.exports.resetPassword = async (req, res) => {
+	const { email, newPassword } = req.body;
+
+	try {
+		// Find user by email
+		const user = await NewUser.findOne({ where: { email } });
+
+		if (!user) {
+			return res.status(404).json({ status: false, message: 'User not found' });
+		}
+
+		// Hash the new password
+		const salt = await bcrypt.genSalt(10);
+		const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+		// Update user's password with the hashed password
+		user.password = hashedPassword;
+
+		// Save the updated user object to persist the new hashed password
+		await user.save();
+
+		res.status(200).json({ status: true, message: 'Password reset successfully' });
+	} catch (error) {
+		console.error('Error resetting password:', error);
+		res.status(500).json({ status: false, message: 'Error resetting password' });
+	}
+};
+
+
+module.exports.Terms = async (req, res) => {
+    // Example Terms of Service HTML content
+    const termsOfService = `
+    <html>
+    <head>
+        <title>CoFit Terms of Service</title>
+    </head>
+    <body>
+        <p>Welcome to CoFit! As a platform dedicated to connecting event organizers and participants, we aim to ensure a seamless and safe experience for all users. Please read these Terms of Service (“Terms”) carefully, as they outline your legal rights and obligations when using CoFit’s services.</p>
+
+        <h2>1. Acceptance of Terms</h2>
+        <p>By accessing or using CoFit’s services, you agree to comply with and be bound by these Terms, which also incorporate our Privacy Policy. If you do not agree with any part of these Terms, please do not use our services.</p>
+
+        <h2>2. Description of Services</h2>
+        <p>CoFit provides a digital platform for event organizers (“Organizers”) to create, manage, and promote their events, and for consumers (“Attendees”) to discover and register for these events.</p>
+
+        <h2>3. User Accounts</h2>
+
+        <p><strong>3.1 Account Creation:</strong> To access certain features, you must create an account with accurate and complete information.</p>
+        <p><strong>3.2 Account Responsibility:</strong> You are responsible for all activities under your account and for keeping your account password secure.</p>
+        <p><strong>3.3 Age Restriction:</strong> Users must be at least 18 years old or the age of majority in their jurisdiction, whichever is higher.</p>
+
+        <h2>4. User Conduct</h2>
+
+        <p><strong>4.1 Compliance:</strong> You agree to comply with all applicable laws and regulations in connection with your use of CoFit’s services.</p>
+        <p><strong>4.2 Prohibited Activities:</strong> Users shall not engage in any activities that are harmful, fraudulent, deceptive, or offensive.</p>
+
+        <h2>5. Content and Intellectual Property</h2>
+
+        <p><strong>5.1 User Content:</strong> Users may post content (e.g., event information, comments). You represent that you have the right to post such content and that it does not violate any law or third-party rights.</p>
+        <p><strong>5.2 CoFit’s Rights:</strong> CoFit reserves the right to remove or modify user content for any reason, including content that we believe violates these Terms.</p>
+
+        <h2>6. Privacy</h2>
+        <p>Your privacy is important to us. CoFit’s collection, use, and disclosure of personal information are outlined in our Privacy Policy.</p>
+
+        <h2>7. Disclaimers</h2>
+        <p>CoFit provides its services on an “as is” and “as available” basis. We do not warrant that the services will be uninterrupted, timely, secure, or error-free.</p>
+
+        <h2>8. Limitation of Liability</h2>
+        <p>To the fullest extent permitted by applicable law, CoFit shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or related to your use of the services.</p>
+
+        <h2>9. Indemnification</h2>
+        <p>You agree to indemnify and hold harmless CoFit and its officers, directors, employees, and agents from any claims, damages, liabilities, costs, and expenses (including attorney’s fees) arising from your use of the services or your violation of these Terms.</p>
+
+        <h2>10. Modification of Terms</h2>
+        <p>CoFit reserves the right to modify these Terms at any time. Your continued use of the services after any such change constitutes your acceptance of the new Terms.</p>
+
+        <h2>11. Governing Law</h2>
+        <p>These Terms shall be governed by and construed in accordance with the laws of the United States and the state in which CoFit is headquartered, without regard to its conflict of law provisions.</p>
+
+        <h2>12. Dispute Resolution</h2>
+        <p>Any disputes arising from these Terms will be resolved through final and binding arbitration, except as otherwise stated in these Terms.</p>
+
+        <h2>13. Contact Us</h2>
+        <p>For any questions about these Terms, please contact us at <a href="info@cofit.com">info@cofit.com</a>.</p>
+    </body>
+    </html>
+    `;
+
+    // Set Content-Type header to indicate JSON response
+    const cleanHtml = termsOfService.replace(/\n/g, '');
+
+    res.json({
+        status: true,
+        data: cleanHtml
+    });
+};
+
+
+
+
+module.exports.PrivacyPolicy = async (req, res) => {
+    const privacyPolicyContent = `
+ <html>
+    <head>
+    </head>
+    <body>
+    <p>CoFit Privacy Policy</p>
+
+    <p>Last Updated: 1/22/2024</p>
+
+    <p>Welcome to CoFit! Protecting your privacy is critically important to us. This Privacy Policy explains how CoFit, Inc. (“CoFit”, “we”, “us”, “our”) collects, uses, shares, and safeguards your personal information when you use our website, services, and mobile application (collectively, “Services”).</p>
+
+    <h2>1. Information Collection</h2>
+    <p>By accessing or using CoFit’s services, you agree to comply with and be bound by these Terms, which also incorporate our Privacy Policy. If you do not agree with any part of these Terms, please do not use our services.</p>
+
+    <h2>2. Use of Information</h2>
+
+    <h3>2.1 Providing Services</h3>
+    <p>We use your information to operate, maintain, and provide the features of our Services.</p>
+    <h3>2.2 Communication</h3>
+    <p>We may use your information to communicate with you, such as to send updates about events or respond to inquiries.</p>
+    <h3>2.3 Improvements</h3>
+    <p>We use the information to understand how our Services are used and to improve them.</p>
+
+    <h2>3. Sharing of Information</h2>
+
+    <h3>3.1 Service Providers</h3>
+    <p>We may share your information with third-party vendors who assist us in operating our Services, such as payment processors or hosting services.</p>
+    <h3>3.2 Compliance and Protection</h3>
+    <p>We may disclose your information if required by law or if we believe that such action is necessary to comply with legal processes or to protect the rights, property, or safety of CoFit, our users, or others.</p>
+
+    <h2>4. Data Security</h2>
+    <p>We implement appropriate security measures to protect your personal information from unauthorized access, alteration, disclosure, or destruction.</p>
+
+    <h2>5. Your Choices</h2>
+
+    <h3>5.1 Account Information</h3>
+    <p>You may update, correct, or delete your account information at any time.</p>
+    <h3>5.2 Cookies</h3>
+    <p>You can set your browser to not accept cookies, but this may limit your ability to use certain features of our Services.</p>
+
+    <h2>6. Children’s Privacy</h2>
+    <p>Our Services are not intended for individuals under the age of 13. We do not knowingly collect personal information from children under 13.</p>
+
+    <h2>7. Changes to This Privacy Policy</h2>
+    <p>We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page.</p>
+
+    <h2>8. Contact Us</h2>
+    <p>If you have any questions about this Privacy Policy, please contact us at <a href="info@cofit.com">info@cofit.com</a>.</p>
+
+</body>
+</html>
+`;
+
+    // Remove "\n" characters from the HTML content
+    const cleanHtml = privacyPolicyContent.replace(/\n/g, '');
+
+    res.json({
+        status: true,
+        data: cleanHtml
+    });
+};
+
+
+
+
+async function fetchAndSaveAddresses() {
+	try {
+		const events = await Event.findAll();
+
+		let totalCount = 0;
+
+		for (let event of events) {
+			const { id, addresses } = event.dataValues;
+
+			if (addresses && addresses.length > 0) {
+				for (let address of addresses) {
+					const existingAddress = await EventAddress.findOne({
+						where: {
+							eventId: id,
+							address: address,
+						}
+					});
+
+					if (!existingAddress) {
+						await EventAddress.create({
+							eventId: id,
+							address: address,
+						});
+						totalCount++;
+					}
+				}
+			}
+		}
+
+		console.log(`Processed and saved ${totalCount} addresses successfully.`);
+	} catch (error) {
+		console.error("Error fetching and saving addresses:", error);
+	}
+}
+
+// Cron job to run every 2 minutes
+// cron.schedule("*/2 * * * *", async () => {
+// 	console.log("Running cron job to fetch and save addresses...");
+// 	await fetchAndSaveAddresses();
+// }); 
+
+
+// Configure Multer for file uploads
+const storage = multer.diskStorage({
+	destination: function (req, file, cb) {
+		cb(null, 'uploads'); // specify your upload directory
+	},
+	filename: function (req, file, cb) {
+		cb(null, `${Date.now()}-${file.originalname}`);
+	}
+});
+
+const upload = multer({
+	storage: storage,
+	fileFilter: function (req, file, cb) {
+		const filetypes = /jpeg|jpg|png/;
+		const mimetype = filetypes.test(file.mimetype);
+		const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+
+		if (mimetype && extname) {
+			return cb(null, true);
+		}
+		cb(new Error('Only images are allowed'));
+	}
+});
+
+// Handle profile photo upload and form data
+module.exports.addProfile = [
+	upload.single('profilePhoto'), // handle single file upload with field name 'profilePhoto'
+	async (req, res) => {
+		const userId = req.params.id;
+
+		try {
+			let user = await NewUser.findByPk(userId);
+
+			if (!user) {
+				return res.status(404).json({
+					success: false,
+					message: 'User not found'
+				});
+			}
+			let inters = req.body.interests;
+			if (typeof req.body.interests === "string") {
+				// if(!Array.isArray(inters)){
+				// 	inters = [req.body.interests];
+				// }
+				inters = JSON.parse(req.body.interests);
+			}
+			console.log({ inters })
+			// Ensure fields are in correct format before updating
+			const updateFields = {
+				firstName: req.body.firstName !== undefined ? req.body.firstName.toString() : user.firstName,
+				lastName: req.body.lastName !== undefined ? req.body.lastName.toString() : user.lastName,
+				dob: req.body.dob !== undefined ? new Date(req.body.dob) : user.dob,
+				gender: req.body.gender !== undefined ? req.body.gender.toString() : user.gender,
+				phoneNo: req.body.phoneNo !== undefined ? req.body.phoneNo.toString() : user.phoneNo,
+				interests: inters && Array.isArray(inters) ? inters : user.interests,
+				homeLocation: req.body.homeLocation !== undefined ? req.body.homeLocation.toString() : user.homeLocation,
+				searchLocation: req.body.searchLocation !== undefined ? req.body.searchLocation.toString() : user.searchLocation,
+			};
+			console.log(updateFields, { updateFields: typeof updateFields.interests }, "updateFields,", Array.isArray(updateFields.interests))
+
+			// If a profile photo was uploaded, update the profile photo field
+			if (req.file) {
+				const imageUrl = `https://cofitapp.com/${req.file.path}`;
+				updateFields.profilePhoto = imageUrl; // Store the file URL in the database
+			}
+			if (req.body.gender !== undefined) {
+				updateFields.gender = req.body.gender.toString();
+			}
+			// Update user record
+			await user.update(updateFields);
+			const formattedDob = user.dob ? user.dob.toISOString().split('T')[0] : null;
+
+			// Return success response
+			res.status(200).json({
+				status: true,
+				message: 'Profile updated successfully',
+				user: {
+					id: user.id,
+					email: user.email,
+					first_name: user.firstName,
+					last_name: user.lastName,
+					dob: formattedDob,
+					gender: user.gender,
+					phone_no: user.phoneNo,
+					profile_image: user.profilePhoto,
+					interests: inters,
+					location: user.homeLocation,
+					search_location: user.searchLocation
+				}
+			});
+		} catch (error) {
+			console.error('Error adding/updating profile:', error);
+			res.status(500).json({
+				status: false,
+				message: 'Failed to add/update profile'
+			});
+		}
+	}
+];
+
+
 
 
 // const endpointSecret = 'whsec_ce4MQk3FuWftxkk5WN244mWIm8CrqrSl';

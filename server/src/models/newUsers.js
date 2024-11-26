@@ -18,7 +18,8 @@ const NewUser = sequelize.define(
     },
     password: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,  // Allow null values for social logins
+      defaultValue: null  // or set a default value if necessary
     },
     firstName: {
       type: DataTypes.STRING,
@@ -30,7 +31,7 @@ const NewUser = sequelize.define(
       type: DataTypes.DATE,
     },
     gender: {
-      type: DataTypes.ENUM('Male', 'Female', 'Other'),
+      type: DataTypes.STRING,
     },
     phoneNo: {
       type: DataTypes.STRING,
@@ -40,16 +41,16 @@ const NewUser = sequelize.define(
     },
     interests: {
       type: DataTypes.JSON,
-      allowNull: true, // Allow null values
-      defaultValue: [], // Provide an empty array as default
-      validate: {
-        isValidInterest(value) {
-          if (value !== null && !Array.isArray(value)) {
-            throw new Error('Interests must be an array');
-          }
-          // Additional validation logic if needed
-        }
-      }
+      allowNull: true,
+      defaultValue: [],
+      // validate: {
+      //   isValidInterest(value) {
+      //     if (value !== null && !Array.isArray(value)) {
+      //       throw new Error('Interests must be an array');
+      //     }
+      //     // Additional validation logic if needed
+      //   }
+      // }
     },
     homeLocation: {
       type: DataTypes.STRING,
@@ -58,16 +59,18 @@ const NewUser = sequelize.define(
       type: DataTypes.STRING,
     },
     googleuser: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
+      type: DataTypes.STRING,
     },
     facebookuser: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
+      type: DataTypes.STRING,
     },
     appleuser: {
+      type: DataTypes.STRING,
+    },
+    newUser: {
       type: DataTypes.BOOLEAN,
-      defaultValue: false,
+      allowNull: false,
+      defaultValue: false, // Assuming new users should have this flag initially set to true
     },
     created_at: {
       type: DataTypes.DATE,

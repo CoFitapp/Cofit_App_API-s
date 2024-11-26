@@ -2,7 +2,8 @@ const {
   Event,
   City,
   User,
-  BookEvents
+  BookEvents,
+  NewUser
 } = require("../models");
 const sequelize = require("sequelize");
 const axios = require('axios');
@@ -104,7 +105,7 @@ const cron = require('node-cron');
 
 //         res.json(flattenedArray);
 
-
+      
 //       }
 //     } else {
 //       const allEvents = await Event.findAll({
@@ -147,6 +148,7 @@ const cron = require('node-cron');
 // };
 
 
+
 // Define your cron job
 
 
@@ -165,7 +167,7 @@ const cron = require('node-cron');
 //   console.log("Cron job running...");
 //   try {
 //     const eventsToUpdate = await Event.findAll();
-    
+
 //     // Update slugs for all events
 //     for (const event of eventsToUpdate) {
 //       let count = 1;
@@ -202,24 +204,138 @@ const cron = require('node-cron');
 // });
 
 
+// const getLatLongFromAddress = async (address) => {
+//   try {
+//     const apiKey = process.env.GOOGLE_API_KEY;
+//     const formattedAddress = encodeURIComponent(address.join(', '));
+//     const apiUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${formattedAddress}&key=${apiKey}`;
+
+//     const response = await axios.get(apiUrl);
+//     if (response.status === 200 && response.data.status === 'OK' && response.data.results.length > 0) {
+//       const location = response.data.results[0].geometry.location;
+//       return {
+//         latitude: location.lat,
+//         longitude: location.lng
+//       };
+//     } else {
+//       console.error('No results found or unexpected response:', response.data);
+//     }
+//   } catch (error) {
+//     console.error('Error fetching geolocation:', error.response?.status, error.response?.data, error.message);
+//   }
+//   return null;
+// };
 
 
+const getLatLongFromAddress = async (address) => {
+  console.log("getLatLongFromAddress")
+  try {
+    const accessToken = process.env.MAPBOX_ACCESS_TOKEN;
+
+    // Ensure we only take the first element if address array length is greater than 2
+    const primaryAddress = address.length > 2 ? address[0] : address;
+    const formattedAddress = encodeURIComponent(primaryAddress);
+
+    const apiUrl = `https://api.mapbox.com/search/geocode/v6/forward?q=${formattedAddress}&access_token=${accessToken}`;
+
+    const response = await axios.get(apiUrl);
+    if (response.status === 200 && response.data.features && response.data.features.length > 0) {
+      const location = response.data.features[0].geometry.coordinates;
+      return {
+        latitude: location[1],
+        longitude: location[0]
+      };
+    } else {
+      console.error('No results found or unexpected response:', response.data);
+    }
+  } catch (error) {
+    console.error('Error fetching geolocation:', error.response?.status, error.response?.data, error.message);
+  }
+  return null;
+};
 
 
+// Function to update events with missing latitude and longitude
+// const updateEventsWithMissingLatLong = async () => {
+//   try {
+//     // Find all events without latitude and longitude
+//     const events = await Event.findAll({
+//       where: {
+//         [Op.or]: [
+//           sequelize.literal("json_unquote(json_extract(events, '$.latitude')) IS NULL"),
+//           sequelize.literal("json_unquote(json_extract(events, '$.longitude')) IS NULL")
+//         ]
+//       }
+//     });
 
+//     for (const event of events) {
+//       // Extract the address from the event details
+//       const address = event.events?.address;
+//       if (address) {
+//         // Log the address being processed
+//         console.log(`Processing address: ${address.join(', ')}`);
+        
+//         // Get latitude and longitude
+//         const location = await getLatLongFromAddress(address);
 
+//         if (location) {
+//           // Update event with latitude and longitude
+//           const updatedEvents = {
+//             ...event.events,
+//             latitude: location.latitude,
+//             longitude: location.longitude
+//           };
 
+//           // Update the event
+//           await event.update({ events: updatedEvents });
+//           console.log(`Updated event ${event.id} with latitude ${location.latitude} and longitude ${location.longitude}`);
+//         } else {
+//           console.log(`Could not update event ${event.id} due to missing location data.`);
+//         }
+//       }
+//     }
 
+//     console.log(`Completed updating events with missing latitude and longitude.`);
+//   } catch (error) {
+//     console.error('Error updating events with missing latitude and longitude:', error.message);
+//   }
+// };
 
+// // Schedule the cron job to run every day at midnight
+// cron.schedule('* * * * *', async () => {
+//   console.log('Running the update events with missing latitude and longitude cron job...');
+//   await updateEventsWithMissingLatLong();
+// });
 
+const updateEventYears = async () => {
+  try {
+    const currentYear = new Date().getFullYear();
 
+    // Find all events
+    const events = await Event.findAll();
 
+    // Update year for each event
+    for (const event of events) {
+      const eventYear = event?.year || currentYear;
+      event.year = eventYear;
+      await event.save();
+    }
 
+    console.log(`All events have been updated with the year ${currentYear}`);
+  } catch (error) {
+    console.error('Error updating event years:', error);
+  }
+};
+
+// Schedule the cron job to run every day at midnight
+cron.schedule('* * * * *', async () => {
+  console.log('Running the event year update cron job...');
+  await updateEventYears();
+});
 
 module.exports.getEvents = async (req, res) => {
   try {
     let city_name = req.body.city_name;
-    console.log("page", req.body.page);
     let page = parseInt(req.body.page) || 1;
     const limit = 9;
     const offset = (page - 1) * limit;
@@ -239,7 +355,7 @@ module.exports.getEvents = async (req, res) => {
         });
 
         if (events && events.length > 0) {
-          const combinedArray = events.map(event => {
+          const combinedArray = await Promise.all(events.map(async (event) => {
             event.events.id = event?.id;
             event.events.year = event?.year;
             if (event.eventTickets && event.eventTickets.length > 0) {
@@ -247,30 +363,41 @@ module.exports.getEvents = async (req, res) => {
             } else {
               event.events.eventTicketsNumber = "100";
             }
-            console.log(" event.events.eventTicketsNumber", event.events.eventTicketsNumber);
+
+            // Get latitude and longitude
+            const location = await getLatLongFromAddress(event.events.address);
+            if (location) {
+              event.events.latitude = location.latitude;
+              event.events.longitude = location.longitude;
+            }
+
             return event.events;
-          });
+          }));
 
           const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
 
-          res.json(flattenedArray);
+          return res.json(flattenedArray);
         } else {
-          res.json([]);
+          return res.json([]);
         }
       } else {
-        let newCity = await City.create({
+        const newCity = await City.create({
           city: city_name,
         });
 
+        // Fetch events from SERP API
         const apiCity = encodeURIComponent(city_name).replace(/%20/g, ' ');
         const apiUrl = `https://serpapi.com/search?engine=google_events&q=fitness%20events%20in%20${apiCity}&hl=en&api_key=${process.env.SERP_API}&htichips=date:month&start=0`;
 
         const response = await axios.get(apiUrl);
         const apiResult = response.data.events_results;
-        const combinedArray = [];
+        const numberOfEvents = apiResult.length;
+        console.log("numberOfEvents", numberOfEvents);
+        if (apiResult && apiResult.length > 0) {
+          const savedEvents = [];
 
-        if (apiResult) {
           for (const result of apiResult) {
+            // Check if the event already exists in the database
             let eventDetail = await Event.findOne({
               where: {
                 link: result?.link,
@@ -278,49 +405,78 @@ module.exports.getEvents = async (req, res) => {
               },
             });
 
-            let count = 1;
-
-            let existingEvent = await Event.findOne({ "events.slug": { [sequelize.Op.exists]: false } }).exec();
-
-            if (!eventDetail.events.slug) {
+            if (!eventDetail) {
+              // Generate unique slug for the event
+              let count = 1;
               let slug = result.title
                 .toLowerCase()
                 .replace(/[^a-z0-9]/g, '-')
                 .replace(/-{2,}/g, '-')
                 .replace(/^-|-$/g, '');
 
+              let existingEvent = await Event.findOne({
+                where: sequelize.where(
+                  sequelize.fn('JSON_CONTAINS', sequelize.col('events'), JSON.stringify({ slug })),
+                  true
+                )
+              });
+
               while (existingEvent) {
                 slug = `${slug}-${count}`;
-                existingEvent = await Event.findOne({ "events.slug": slug }).exec();
+                existingEvent = await Event.findOne({
+                  where: sequelize.where(
+                    sequelize.fn('JSON_CONTAINS', sequelize.col('events'), JSON.stringify({ slug })),
+                    true
+                  )
+                });
                 count++;
               }
+
+              // Determine event year based on start_date
               const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
 
+              // Get latitude and longitude
+              const location = await getLatLongFromAddress(result.address);
+              if (location) {
+                result.latitude = location.latitude;
+                result.longitude = location.longitude;
+              }
+
+              // Create the event in the database
               result.slug = slug;
               result.year = result.year || new Date().getFullYear();
+
               eventDetail = await Event.create({
-                city_id: newCity?.id,
+                city_id: newCity.id,
                 events: result,
                 link: result?.link,
                 year: eventYear,
+                slug: result.slug
               });
+
+              savedEvents.push(eventDetail.events); // Push saved event details to array
             } else {
+              // Update event details if it already exists
               eventDetail.events = result;
               await eventDetail.save();
-            }
 
-            eventDetail.events.id = eventDetail?.id;
-            combinedArray.push(eventDetail.events);
+              savedEvents.push(eventDetail.events); // Push updated event details to array
+            }
           }
+
+          // Load rest of events function
+          loadRestOfEvents(newCity?.id);
+
+          return res.json(savedEvents); // Return early after sending response
+        } else {
+          return res.json([]); // Return early after sending response
         }
-        const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
-        loadRestOfEvents(newCity?.id);
-        res.json(flattenedArray);
       }
     } else {
-      const { searchQuery } = req.body;
+      // Handle searchQuery and initialLocation logic when city_name is not provided
+      const { searchQuery, initialLocation } = req.body;
 
-      const filteredEvents = await Event.findAll({
+      const query = {
         where: {
           isFeatured: 1,
           [sequelize.Op.and]: [
@@ -332,19 +488,43 @@ module.exports.getEvents = async (req, res) => {
             {
               [sequelize.Op.or]: [
                 { 'events.title': { [sequelize.Op.like]: `%${searchQuery}%` } },
-                { 'events.description': { [sequelize.Op.like]: `%${searchQuery}%` } }
+                { 'events.description': { [sequelize.Op.like]: `%${searchQuery}%` } },
               ]
             }
           ]
         },
         offset: offset,
         limit: limit
-      });
+      };
 
-      const combinedArray = filteredEvents.map(event => {
+      if (initialLocation) {
+        const locations = initialLocation.split(",").map(location => location.trim());
+        query.where[sequelize.Op.and].push({ 'events.address': { [Op.ne]: '' } });
+
+        const locationConditions = locations.map(location => ({
+          [Op.or]: [
+            { 'events.address': { [sequelize.Op.like]: `%${location}%` } },
+            { 'events.address': location }
+          ]
+        }));
+
+        query.where[sequelize.Op.and].push(...locationConditions);
+      }
+
+      const filteredEvents = await Event.findAll(query);
+
+      const combinedArray = await Promise.all(filteredEvents.map(async (event) => {
         event.events.id = event?.id;
+
+        // Get latitude and longitude
+        const location = await getLatLongFromAddress(event.events.address);
+        if (location) {
+          event.events.latitude = location.latitude;
+          event.events.longitude = location.longitude;
+        }
+
         return event.events;
-      });
+      }));
 
       const flattenedArray = combinedArray.reduce((acc, curr) => acc.concat(curr), []);
 
@@ -368,7 +548,7 @@ module.exports.getEvents = async (req, res) => {
 
       const totalPages = Math.ceil(count / limit);
 
-      res.json({
+      return res.json({
         events: flattenedArray,
         currentPage: page,
         totalRecords: count,
@@ -376,9 +556,10 @@ module.exports.getEvents = async (req, res) => {
       });
     }
   } catch (error) {
-    return res.status(200).send({
+    console.error("Get Event Error:", error);
+    return res.status(500).json({
       status: false,
-      error,
+      error: "Internal server error",
     });
   }
 };
@@ -387,51 +568,51 @@ module.exports.getEvents = async (req, res) => {
 
 
 
+
 const loadRestOfEvents = async (id) => {
-  let city = await City.findByPk(id);
-  const { city: cityName } = city;
+  try {
+    let city = await City.findByPk(id);
+    const { city: cityName } = city;
 
-  for (let sum = 10; sum <= 0; sum += 10) {
-    const apiCity = encodeURIComponent(cityName).replace(/%20/g, ' ');
-    const apiUrl = `https://serpapi.com/search?engine=google_events&q=fitness%20events%20in%20${apiCity}&hl=en&api_key=${process.env.SERP_API}&htichips=date:month&start=${sum}`;
+    for (let sum = 0; sum <= 90; sum += 10) {
+      const apiCity = encodeURIComponent(cityName).replace(/%20/g, ' ');
+      const apiUrl = `https://serpapi.com/search?engine=google_events&q=fitness%20events%20in%20${apiCity}&hl=en&api_key=${process.env.SERP_API}&htichips=date:month&start=${sum}`;
 
-    try {
       const response = await axios.get(apiUrl);
       const apiResult = response.data.events_results;
+
       if (!apiResult) {
         break;
       }
 
       for (const result of apiResult) {
-
         let eventDetail = await Event.findOne({
           where: {
             link: result?.link,
-            city_id: id
-          }
+            city_id: id,
+          },
         });
 
         if (!eventDetail) {
-          // Insert events into the events table
+          // Event does not exist, create new event
           await Event.create({
             city_id: id,
             events: result,
-            link: result?.link
+            link: result?.link,
           });
-
-        }
-        else {
+        } else {
+          // Event already exists, update its details
           eventDetail.events = result;
           await eventDetail.save();
         }
-
       }
-
-    } catch (error) {
-      console.error('Error making API request or processing response:', error);
     }
+  } catch (error) {
+    console.error('Error fetching or saving events:', error);
+    // Handle error as needed, e.g., throw or log
   }
-}
+};
+
 
 module.exports.eventDetails = async (req, res) => {
   try {
@@ -972,24 +1153,47 @@ module.exports.register = async (req, res) => {
 
 
 
+// module.exports.deleteAccount = async (req, res) => {
+//   try {
+//     const { email, google_id } = req.body;
+
+//     // Check if the user exists
+//     let user = await User.findOne({ where: { email, google_id } });
+
+//     if (!user) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
+
+//     // Delete the user
+//     await user.destroy();
+
+//     return res.status(200).json({ message: 'User deleted successfully' });
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({ message: 'Server error' });
+//   }
+// };
+
+
+
 module.exports.deleteAccount = async (req, res) => {
+  const { id } = req.params;
+
   try {
-    const { email, google_id } = req.body;
-
-    // Check if the user exists
-    let user = await User.findOne({ where: { email, google_id } });
-
+    // Find the user by ID
+    const user = await NewUser.findOne({ where: { id } });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ status: false, message: 'User not found' });
     }
 
     // Delete the user
-    await user.destroy();
+    await NewUser.destroy({ where: { id } });
 
-    return res.status(200).json({ message: 'User deleted successfully' });
+    // Respond with success message
+    res.status(200).json({ status: true, message: 'User deleted successfully' });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Server error' });
+    console.error('Error deleting user:', error);
+    res.status(500).json({ status: false, message: 'Failed to delete user' });
   }
 };
 
@@ -997,26 +1201,33 @@ module.exports.deleteAccount = async (req, res) => {
 module.exports.getUserDetails = async (req, res) => {
   try {
     let user_id = req.params.id;
-    let userFind = await User.findOne({
+    let userFind = await NewUser.findOne({
       where: {
         id: user_id
       }
     });
+    console.log("userFind", userFind);
     if (!userFind) {
       throw 'No user found!';
     }
     let user = {
       id: userFind?.id,
-      name: userFind?.full_name,
-      first_name: userFind?.first_name,
-      last_name: userFind?.last_name,
-      location: userFind?.location,
-      search_location: userFind?.search_location, // Include search_location
-      email: userFind?.email,
-      phone_no: userFind?.phone_no,
-      profile_image: `${userFind?.profile_image ? `${process.env.IMAGE_BASEURL}/${userFind?.profile_image}` : null}`,
-      stripeCustomerId: userFind?.stripeCustomerId,
-      stripeAccountId: userFind?.stripeAccountId,
+      // name: userFind?.full_name,
+      email: userFind?. email,
+      first_name: userFind?.firstName,
+      last_name: userFind?.lastName,
+      dob: userFind?.dob,
+      gender: userFind?.gender,
+      phone_no: userFind?.phoneNo,
+      profile_image: userFind?.profilePhoto,
+      interests: userFind?.interests,
+      location: userFind?.homeLocation,
+      search_location: userFind?.searchLocation, // Include search_location
+      googleuser: userFind?.googleuser,
+      facebookuser: userFind?.facebookuser,
+      appleuser: userFind?.appleuser,
+      // stripeCustomerId: userFind?.stripeCustomerId,
+      // stripeAccountId: userFind?.stripeAccountId,
     }
     return res.status(200).send({
       status: true,
@@ -1094,6 +1305,11 @@ module.exports.saveEvents = async (req, res) => {
               }
             });
             const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
+            const location = await getLatLongFromAddress(result.address);
+            if (location) {
+              result.latitude = location.latitude;
+              result.longitude = location.longitude;
+            }
             if (!eventDetail) {
               // Insert events into the events table along with the current year
               const slug = result.title
@@ -1114,7 +1330,7 @@ module.exports.saveEvents = async (req, res) => {
               eventDetail.events = result;
               const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
               eventDetail.year = eventYear;  // Update the year
-              
+
               // Add or update slug
               if (!eventDetail.events.slug) {
                 const slug = result.title
@@ -1176,6 +1392,11 @@ module.exports.saveWeeklyEvents = async (req, res) => {
             });
 
             const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
+            const location = await getLatLongFromAddress(result.address);
+            if (location) {
+              result.latitude = location.latitude;
+              result.longitude = location.longitude;
+            }
             if (!eventDetail) {
               // Generate slug for the event title
               let slug = result.title
@@ -1200,14 +1421,14 @@ module.exports.saveWeeklyEvents = async (req, res) => {
                 city_id: id,
                 events: { ...result, slug },
                 link: result?.link,
-                year: eventYear 
+                year: eventYear
               });
 
             } else {
               // Update existing event details
               eventDetail.events = result;
               const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
-              eventDetail.year = eventYear; 
+              eventDetail.year = eventYear;
               await eventDetail.save();
             }
           }
@@ -1256,7 +1477,11 @@ module.exports.nextMonthSaveEvents = async (req, res) => {
               }
             });
             const eventYear = result?.date?.start_date?.includes('Dec') ? currentYear + 1 : currentYear;
-
+            const location = await getLatLongFromAddress(result.address);
+            if (location) {
+              result.latitude = location.latitude;
+              result.longitude = location.longitude;
+            }
             if (!eventDetail) {
               // Insert events into the events table
               let slug = result.title
@@ -1278,7 +1503,7 @@ module.exports.nextMonthSaveEvents = async (req, res) => {
                 city_id: id,
                 events: { ...result, slug },
                 link: result?.link,
-                year: eventYear 
+                year: eventYear
               });
             }
             else {
@@ -1287,7 +1512,7 @@ module.exports.nextMonthSaveEvents = async (req, res) => {
                 .replace(/[^a-z0-9]/g, '-')
                 .replace(/-{2,}/g, '-')
                 .replace(/^-|-$/g, '');
-              
+
               let count = 1;
               let existingEvent = await Event.findOne({ where: { 'events.slug': slug } });
 

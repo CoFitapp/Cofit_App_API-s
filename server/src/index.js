@@ -51,7 +51,8 @@ router.get("/save-weekly-event", ApiController.saveWeeklyEvents);
 router.get("/next-month-save-event", ApiController.nextMonthSaveEvents);
 
 router.post("/api/register",ApiController.register);
-router.post("/api/deleteAccount",ApiController.deleteAccount);
+// router.post("/api/deleteAccount",ApiController.deleteAccount);
+router.get("/api/delete-account/:id",ApiController.deleteAccount);
 
 router.post("/api/update-user/:id",uploadStorage.single("profile_image"),ApiController.updateUser);
 router.get("/api/get-user-details/:id",ApiController.getUserDetails);
@@ -101,6 +102,15 @@ router.post("/api/webhook", customController.stripeWebHook);
 router.post("/api/signup", customController.signup);
 router.post("/api/add-profile/:id", customController.addProfile);
 router.post("/api/login", customController.login);
+router.post("/api/google-login", customController.googleLogin);
+router.post("/api/apple-login", customController.appleLogin);
+router.post("/api/update-password/:id", customController.updatePassword);
+router.post("/api/send-reset-link", customController.SendResetLink);
+router.post("/api/reset-password", customController.resetPassword);
+router.get("/api/terms", customController.Terms);
+router.get("/api/privacy-policy", customController.PrivacyPolicy);
+
+// router.post("/api/update-password", customController.updatePassword);
 
 // for ejs template routes
 // router.get('/', function (req,res, next)  {
