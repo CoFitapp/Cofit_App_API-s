@@ -11,7 +11,10 @@ const { CLIENT_RENEG_LIMIT } = require("tls");
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 const { Op } = require('sequelize');
 const cron = require('node-cron');
-
+const fs = require('fs');
+const path = require('path');
+const sgMail = require('@sendgrid/mail');
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 
 // module.exports.getEvents = async (req, res) => {
@@ -105,7 +108,7 @@ const cron = require('node-cron');
 
 //         res.json(flattenedArray);
 
-      
+
 //       }
 //     } else {
 //       const allEvents = await Event.findAll({
@@ -274,7 +277,7 @@ const getLatLongFromAddress = async (address) => {
 //       if (address) {
 //         // Log the address being processed
 //         console.log(`Processing address: ${address.join(', ')}`);
-        
+
 //         // Get latitude and longitude
 //         const location = await getLatLongFromAddress(address);
 
@@ -1015,9 +1018,45 @@ module.exports.eventDetail = async (req, res) => {
 // };
 
 
-module.exports.register = async (req, res) => {
+const sendWelcomeEmail = async (email) => {
   try {
+    // Read the HTML file
+    const htmlPath = path.join(__dirname, '../view/Welcome-Email.html');
+    const emailHtml = fs.readFileSync(htmlPath, 'utf-8');
+
+    // Set up the email message
+    const msg = {
+      to: email,
+      from: 'support@cofitapp.com',
+      subject: 'Welcome to Coffit',
+      text: 'Registered Successfully',
+      html: emailHtml,
+    };
+
+    // Send the email
+    const response = await sgMail.send(msg);
+    console.log("Email sent successfully:", response);
+  } catch (error) {
+    console.error("Error sending email:", error);
+    if (error.response) {
+      console.error(error.response.body);
+    }
+  }
+};
+
+
+
+module.exports.register = async (req, res) => {
+
+  try {
+
     let { name, first_name, last_name, email, location, google_id, search_location } = req.body;
+
+    console.log('###register')
+    console.log('####SENDGRID_API_KEY', process.env.SENDGRID_API_KEY)
+
+
+    // return res.status(200).send({ email, message: "#1Email sent successfully!! " })
 
     let user = await User.findOne({ where: { email, google_id } });
 
@@ -1093,6 +1132,9 @@ module.exports.register = async (req, res) => {
           stripeAccountId: stripeAccount.id
         });
         user.save()
+
+
+
       } else {
         // Retrieve existing Stripe account details
         stripeAccount = await stripe.accounts.retrieve(user.stripeAccountId);
@@ -1134,6 +1176,29 @@ module.exports.register = async (req, res) => {
       stripeCustomerId: stripeCustomer ? stripeCustomer.id : user.stripeCustomerId,
       stripeAccountId: stripeAccount ? stripeAccount.id : user.stripeAccountId
     };
+
+    // const msg = {
+    //   to: email,
+    //   from: 'support@cofitapp.com',
+    //   subject: 'Welcome to Coffit',
+    //   text: 'Registered Successfully',
+    //   html: '<strong>Welcome to Coffit</strong>',
+    // };
+
+    // sgMail
+    //   .send(msg)
+    //   .then((response) => {
+    //     console.log("##################email status", response)
+    //   }, error => {
+    //     console.error(error);
+
+    //     if (error.response) {
+    //       console.error(error.response.body)
+    //     }
+    //   });
+
+
+    sendWelcomeEmail(email)
 
     return res.status(200).send({
       status: true,
@@ -1213,7 +1278,7 @@ module.exports.getUserDetails = async (req, res) => {
     let user = {
       id: userFind?.id,
       // name: userFind?.full_name,
-      email: userFind?. email,
+      email: userFind?.email,
       first_name: userFind?.firstName,
       last_name: userFind?.lastName,
       dob: userFind?.dob,
